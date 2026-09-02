@@ -12,7 +12,8 @@ DNS Shield is a cyber threat defense platform that combines a 7-Stage Real-Time 
 2. **Temporal APT Kill-Chain Forecaster (PS2)**:
    - Evaluates multi-stage cyberattacks mapped to 6 MITRE ATT&CK stages: Reconnaissance (TA0043), Initial Access (TA0001), Discovery (TA0007), C2 Persistence (TA0011), Lateral Movement (TA0008), and Data Exfiltration (TA0010).
    - Powered by a 2-layer Recurrent Neural Sequence Model (GRU) evaluated under strict per-scenario chronological splitting on CTU-13 multi-stage flow telemetry (5 diverse infection scenarios, 83,010 flows).
-   - Fully Seeded Deterministic Test Metrics (Seed 42): 71.30% Weighted F1, 79.28% Weighted Precision, 76.99% Recall, 1.43% Benign FPR (121 / 8,454), and 0.013 ms/sequence inference latency.
+   - Fully Seeded Deterministic Test Metrics (Seed 42, ground-truth-first label priority, 3 independent runs — zero drift): **72.01% Weighted F1, 73.07% Weighted Precision, 75.99% Recall, 5.69% Benign FPR**, 0.013 ms/sequence inference latency.
+   - Stage 5 (Lateral Movement) note: 2 training examples in current 5-scenario dataset — model reports zero recall for this class honestly. Accuracy on Stages 0–4, 6 is verified.
    - Generates multi-horizon probability trajectories (+15m, +30m, +45m, +60m) and dynamic Time-to-Compromise (TTC) remaining time budgets.
    - Provides sequence permutation feature attributions (Risk Accelerants vs Risk Mitigants).
 3. **Automated Response & Device Fleet Management**:
