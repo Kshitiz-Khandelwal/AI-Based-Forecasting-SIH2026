@@ -62,6 +62,8 @@ interface ForecastData {
   hardware_relay_required?: boolean;
   blast_radius_nodes?: string[];
   preemptive_actions?: Array<{ action: string; priority: string; description: string; target: string }>;
+  observed_qps?: number;
+  active_flows?: number;
   message?: string;
 }
 
@@ -688,7 +690,8 @@ export default function ForecastPage() {
             </div>
             <div className="bg-slate-950 rounded-lg p-3 font-mono text-[11px] text-sky-400 space-y-1 border border-slate-800">
               <div className="flex justify-between text-sky-300 font-bold border-b border-sky-900/50 pb-1">
-                <span>PROBE</span><span>{Math.round(Math.random() * 15 + 35)}.{Math.floor(Math.random() * 9)} QPS</span>
+                <span>PROBE TELEMETRY</span>
+                <span>{typeof data.observed_qps === "number" ? `${data.observed_qps.toFixed(1)} QPS` : `${selectedHost ? (selectedHost.active_flows / 10).toFixed(1) : "0.0"} QPS`}</span>
               </div>
               <div className="text-slate-200 font-bold">SIGNAL: {relayTripped ? "AIR-GAP ENGAGED (EMULATED)" : "ARMED / SECURE (EMULATED)"}</div>
               <div className="text-slate-400">THREAT: {threatScore} / 100</div>
@@ -803,8 +806,22 @@ export default function ForecastPage() {
                       )}
                     </div>
 
-                    <div className="text-[10px] font-mono font-bold text-slate-500 shrink-0">
-                      {isCurrent ? "t = 0m" : isPast ? `−${(currentIdx - idx) * 10}m` : `+${(idx - currentIdx) * 15}m`}
+                    <div className="text-[10px] font-mono font-bold text-slate-500 shrink-0 text-right">
+                      {isCurrent ? (
+                        <span className="text-blue-600 font-extrabold">Active (t = 0m)</span>
+                      ) : isPast ? (
+                        <span className="text-slate-400 font-normal">Traversed</span>
+                      ) : stage === "STAGE_6_EXFILTRATION" && data.time_to_compromise_min > 0 ? (
+                        <span className="text-amber-600 font-bold">TTC ~{data.time_to_compromise_min}m</span>
+                      ) : data.forecast_15m?.stage === stage ? (
+                        <span className="text-indigo-600 font-semibold">~+15m model projection</span>
+                      ) : data.forecast_30m?.stage === stage ? (
+                        <span className="text-orange-600 font-semibold">~+30m model projection</span>
+                      ) : data.forecast_60m?.stage === stage ? (
+                        <span className="text-rose-600 font-semibold">~+60m model projection</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal">Approx. ~+{(idx - currentIdx) * 15}m</span>
+                      )}
                     </div>
                   </div>
                 );

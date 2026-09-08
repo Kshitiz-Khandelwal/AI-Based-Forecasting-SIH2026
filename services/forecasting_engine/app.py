@@ -151,6 +151,16 @@ def _forecast_to_dict(result) -> Dict[str, Any]:
     d["feature_attributions"] = d.get("feature_attributions", [])
     d["shap_explanations"] = d["feature_attributions"]
     d["hardware_mode"] = "SIMULATED_MOCK_EMULATION"  # Discloses that relay is software emulated
+
+    # Calculate real observed telemetry QPS from host's recent flow timeline
+    flows = _get_flow_timeline(result.host_ip)
+    d["active_flows"] = len(flows)
+    if flows:
+        time_span = max(1.0, flows[-1].get("timestamp", 0) - flows[0].get("timestamp", 0)) if len(flows) > 1 else 60.0
+        d["observed_qps"] = round(len(flows) / min(time_span, 60.0), 1)
+    else:
+        d["observed_qps"] = 0.0
+
     return d
 
 
