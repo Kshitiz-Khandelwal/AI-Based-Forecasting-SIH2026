@@ -226,7 +226,7 @@ export default function QueuePage() {
                         {formatTime(event.timestamp)}
                       </td>
                       <td className="px-3 py-2.5 font-mono font-semibold text-slate-900">
-                        <Link href={`/app/domain?d=${encodeURIComponent(event.domain)}`} className="hover:text-blue-600">
+                        <Link href={`/app/domain/${encodeURIComponent(event.domain)}?id=${encodeURIComponent(event.id)}&domain=${encodeURIComponent(event.domain)}`} className="hover:text-blue-600">
                           {event.domain}
                         </Link>
                       </td>

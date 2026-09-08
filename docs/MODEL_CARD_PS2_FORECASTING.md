@@ -1,14 +1,18 @@
 # Model Card — DNS Shield X-Forecast (PS2 Temporal Attack Forecaster)
 
 ## 1. Model Overview & Purpose
-- **Model Name**: DNS Shield Temporal Markov Kill-Chain Forecaster (`v2.1.0-ps2`)
+- **Model Name**: DNS Shield Temporal GRU Sequence Forecaster (`v2.1.0-ps2`)
 - **Problem Statement**: SIH 2026 PS2 — AI-Based Cyber Attack Forecasting System & Temporal Kill-Chain Trajectory.
-- **Architecture**: Stateful 7-Stage Markov State Transition Graph + Temporal Sliding-Window Feature Extractor + Additive TreeSHAP Explainer.
+- **Architecture**: 
+  - **Current-Stage Classification**: Trained 2-Layer PyTorch GRU Sequence Forecaster (`input_dim=16`, `hidden_dim=64`, `seq_len=10`, `classes=7`) evaluating normalized 16-dimensional temporal flow vectors extracted via `temporal_feature_extractor`.
+  - **Future-Horizon Projections (+15m, +30m, +60m)**: Stochastic Markov state rollout matrix seeded directly from the GRU model's real softmax probability distribution $\mathbf{p} \in \mathbb{R}^7$.
+  - **Explainability & Attribution**: Real sequence perturbation-based feature attribution computed dynamically against the GRU input tensor.
+  - **Fail-Safe Heuristic Fallback**: Explicitly labeled keyword-based sliding-window fallback engaged only if model weights fail to load.
 - **Target Horizons**: 
-  - $t+0$: Current Active MITRE ATT&CK Phase
-  - $t+15\text{m}$: 15-Minute Next Hop Stage & Confidence Cone
-  - $t+30\text{m}$: 30-Minute Intermediate Escalation Projection
-  - $t+60\text{m}$: 60-Minute Exfiltration / Culmination Horizon
+  - $t+0$: Current Active MITRE ATT&CK Phase (GRU argmax class + confidence)
+  - $t+15\text{m}$: 15-Minute Next Hop Stage & Confidence Cone ($\mathbf{p} \cdot M$)
+  - $t+30\text{m}$: 30-Minute Intermediate Escalation Projection ($\mathbf{p} \cdot M^2$)
+  - $t+60\text{m}$: 60-Minute Exfiltration / Culmination Horizon ($\mathbf{p} \cdot M^4$)
 
 ---
 
@@ -18,7 +22,7 @@
 $$\text{TTC}(s, \mathbf{x}) = \left(\sum_{k=s+1}^{6} T_k\right) \times \left(1.0 - 0.45 \cdot \text{clip}\left(\frac{\text{burst\_qps}}{25.0}, 0.0, 1.0\right)\right) \times \left(0.60 + 0.40 \cdot (1.0 - C)\right)$$
 
 Where:
-1. **$s \in \{0, 1, 2, 3, 4, 5, 6\}$**: Current classified kill-chain stage index.
+1. **$s \in \{0, 1, 2, 3, 4, 5, 6\}$**: Current classified kill-chain stage index from GRU model output.
 2. **$T_k$**: Canonical baseline stage duration constants (minutes):
    - $T_1$ (Reconnaissance): $10.0\text{ min}$
    - $T_2$ (Initial Access): $15.0\text{ min}$
@@ -52,5 +56,4 @@ Where:
 
 ## 5. Explainability Architecture & Taxonomy
 - **ML Lexical Inference (`services/ml-inference`)**: Uses true TreeSHAP (`shap.TreeExplainer`) on Random Forest & LightGBM lexical models to generate exact mathematical Shapley attribution values ($\phi$) for character entropy, n-grams, and vowel ratios.
-- **Temporal Attack Forecasting (`services/forecasting_engine`)**: Uses normalized additive heuristic indicator weights across session burst QPS, C2 heartbeat periodicity, SYN flood ratio, and DNS tunneling markers to explain kill-chain phase classification.
-
+- **Temporal Attack Forecasting (`services/forecasting_engine`)**: Uses dynamic feature perturbation against the GRU model input sequence to calculate feature impact on threat probability $(\Delta P(\text{threat}))$. Features are ranked by absolute magnitude to explain why the neural sequence forecaster identified the active attack phase.

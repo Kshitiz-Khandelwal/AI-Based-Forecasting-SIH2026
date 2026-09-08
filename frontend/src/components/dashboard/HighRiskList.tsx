@@ -45,7 +45,7 @@ export function HighRiskList({ events }: { events: QueryResult[] }) {
                   </div>
                 </div>
                 <Link
-                  href={`/app/domain/${ev.id || ev.domain}`}
+                  href={`/app/domain/${encodeURIComponent(ev.domain || ev.id)}?id=${encodeURIComponent(ev.id || "ev-highrisk")}&domain=${encodeURIComponent(ev.domain || ev.id)}`}
                   className="rounded border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700 transition"
                 >
                   Triage
