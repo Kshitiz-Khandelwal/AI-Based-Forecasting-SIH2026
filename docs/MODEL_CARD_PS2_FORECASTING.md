@@ -57,3 +57,47 @@ Where:
 ## 5. Explainability Architecture & Taxonomy
 - **ML Lexical Inference (`services/ml-inference`)**: Uses true TreeSHAP (`shap.TreeExplainer`) on Random Forest & LightGBM lexical models to generate exact mathematical Shapley attribution values ($\phi$) for character entropy, n-grams, and vowel ratios.
 - **Temporal Attack Forecasting (`services/forecasting_engine`)**: Uses dynamic feature perturbation against the GRU model input sequence to calculate feature impact on threat probability $(\Delta P(\text{threat}))$. Features are ranked by absolute magnitude to explain why the neural sequence forecaster identified the active attack phase.
+
+---
+
+## 6. Provenance & Empirical Calibration of Priors (CTU-13 Dataset)
+
+To ensure scientific honesty and transparency, DNS Shield explicitly separates **trained neural model parameters**, **data-calibrated transition priors**, and **domain-expert baseline assumptions**:
+
+| Component | Methodology | Source | Confidence Tier |
+| :--- | :--- | :--- | :--- |
+| **Current Stage Classification** | PyTorch 2-Layer GRU Forward Pass | `temporal_gru_forecaster.pt` | **Learned from Data** (71.3% test accuracy) |
+| **Feature Explanations** | Continuous Input Perturbation Sensitivity | Real-time GRU tensor perturbation | **Dynamic Input Gradient** |
+| **Markov Horizon (+15m/+30m/+60m)** | Empirical Transition Matrix ($\mathbf{P} \cdot M^k$) | `services/forecasting_engine/priors.json` (via `calibrate_priors.py`) | **Empirically Calibrated** (60,273 transitions) |
+| **Stage 0, 1, 2, 4, 6 Transitions** | Bayesian Smoothed Transition Counts ($N \ge 20$) | CTU-13 NetFlow (83,010 flows, 5 scenarios) | **High Confidence Calibrated** |
+| **Stage 3 (Discovery) Transitions** | Domain-Expert Prior ($N < 20$) | Published APT Campaign Analysis | **Low-Confidence Prior (Inherited Default)** |
+| **Stage 5 (Lateral) Transitions** | Domain-Expert Prior ($N = 2$) | Published APT Campaign Analysis | **Low-Confidence Prior (Inherited Default)** |
+| **Stage Dwell Times (TTC)** | Blended CTU-13 Run Durations + Expert Priors | `priors.json` (`[0, 8.3, 15, 12, 13.2, 22, 0]` min) | **Hybrid Calibrated Prior** |
+
+### Calibration Sample Size Audit (CTU-13 Multistage NetFlow)
+Generated via `python services/forecasting_engine/calibrate_priors.py`:
+- **Total Labeled Flows**: $83,010$ across 5 CTU-13 botnet scenarios.
+- **Total Observed Transitions**: $60,273$ sequential stage-to-stage transitions.
+- **Observed Transitions by Originating Stage**:
+  - `STAGE_0_BENIGN`: $N = 52,715$ transitions $\to$ **High Confidence**
+  - `STAGE_1_RECONNAISSANCE`: $N = 391$ transitions $\to$ **High Confidence** (Dwell time: $8.3\text{ min}$)
+  - `STAGE_2_INITIAL_ACCESS`: $N = 4,388$ transitions $\to$ **High Confidence** (Dwell time: $15.0\text{ min}$)
+  - `STAGE_3_DISCOVERY`: $N = 0$ transitions $\to$ **Low-Confidence Inherited Prior** (No internal sweeps in CTU-13 capture)
+  - `STAGE_4_C2_PERSISTENCE`: $N = 332$ transitions $\to$ **High Confidence** (Dwell time: $13.2\text{ min}$)
+  - `STAGE_5_LATERAL_MOVEMENT`: $N = 2$ transitions $\to$ **Low-Confidence Inherited Prior** (CTU-13 was single-host botnet egress)
+  - `STAGE_6_EXFILTRATION`: $N = 2,445$ transitions $\to$ **High Confidence**
+
+### API Provenance Object
+Every response from `/forecast/{host}` and `/forecast/timeline` includes the `provenance` dictionary:
+```json
+"provenance": {
+  "current_stage": "gru_inference",
+  "horizon_projection": "markov_rollout_calibrated_prior",
+  "time_to_compromise": "formula_with_calibrated_durations",
+  "feature_attributions": "perturbation_analysis_on_gru_input",
+  "priors_source": "CTU-13 empirical calibration (N=60273 observed transitions)",
+  "calibrated_transitions_file": "services/forecasting_engine/priors.json",
+  "neural_model_file": "services/forecasting_engine/models/temporal_gru_forecaster.pt"
+}
+```
+

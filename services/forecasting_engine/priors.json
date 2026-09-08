@@ -1,0 +1,458 @@
+{
+  "metadata": {
+    "source_dataset": "CTU-13 Multistage NetFlow (5 scenarios, 83,010 flows)",
+    "calibrated_at": "2026-09-08T05:16:14.726623+00:00",
+    "total_observed_transitions": 60273,
+    "min_sample_threshold": 20,
+    "script": "services/forecasting_engine/calibrate_priors.py"
+  },
+  "transition_matrix": {
+    "STAGE_0_BENIGN": {
+      "STAGE_0_BENIGN": 1.0
+    },
+    "STAGE_1_RECONNAISSANCE": {
+      "STAGE_1_RECONNAISSANCE": 0.8454,
+      "STAGE_2_INITIAL_ACCESS": 0.0636,
+      "STAGE_4_C2_PERSISTENCE": 0.0698,
+      "STAGE_6_EXFILTRATION": 0.0175
+    },
+    "STAGE_2_INITIAL_ACCESS": {
+      "STAGE_2_INITIAL_ACCESS": 0.6306,
+      "STAGE_6_EXFILTRATION": 0.3524
+    },
+    "STAGE_3_DISCOVERY": {
+      "STAGE_3_DISCOVERY": 0.2,
+      "STAGE_4_C2_PERSISTENCE": 0.45,
+      "STAGE_5_LATERAL_MOVEMENT": 0.35
+    },
+    "STAGE_4_C2_PERSISTENCE": {
+      "STAGE_1_RECONNAISSANCE": 0.0789,
+      "STAGE_2_INITIAL_ACCESS": 0.0877,
+      "STAGE_4_C2_PERSISTENCE": 0.807,
+      "STAGE_5_LATERAL_MOVEMENT": 0.0146,
+      "STAGE_6_EXFILTRATION": 0.0117
+    },
+    "STAGE_5_LATERAL_MOVEMENT": {
+      "STAGE_5_LATERAL_MOVEMENT": 0.1,
+      "STAGE_6_EXFILTRATION": 0.9
+    },
+    "STAGE_6_EXFILTRATION": {
+      "STAGE_2_INITIAL_ACCESS": 0.6322,
+      "STAGE_6_EXFILTRATION": 0.3676
+    }
+  },
+  "transition_matrix_array": [
+    [
+      0.9999715504978662,
+      2.844950213371266e-05,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.003740648379052369,
+      0.8453865336658354,
+      0.06359102244389027,
+      0.0,
+      0.06982543640897755,
+      0.0,
+      0.017456359102244388
+    ],
+    [
+      0.0,
+      0.008412914961346066,
+      0.6306275579809004,
+      0.0009095043201455207,
+      0.007389722601182355,
+      0.00022737608003638017,
+      0.35243292405638926
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.2,
+      0.45,
+      0.35,
+      0.0
+    ],
+    [
+      0.0,
+      0.07894736842105263,
+      0.08771929824561403,
+      0.0,
+      0.8070175438596491,
+      0.014619883040935672,
+      0.011695906432748537
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.1,
+      0.9
+    ],
+    [
+      0.00020366598778004074,
+      0.0,
+      0.6321792260692465,
+      0.0,
+      0.0,
+      0.0,
+      0.36761710794297353
+    ]
+  ],
+  "stage_durations_min": [
+    0.0,
+    8.3,
+    15.0,
+    12.0,
+    13.2,
+    22.0,
+    0.0
+  ],
+  "provenance_details": {
+    "STAGE_0_BENIGN": {
+      "stage_id": "STAGE_0_BENIGN",
+      "total_observed_transitions": 52715,
+      "confidence_tier": "HIGH_CONFIDENCE_CALIBRATED",
+      "pairs": {
+        "STAGE_0_BENIGN": {
+          "observed_n": 52715,
+          "probability": 1.0,
+          "status": "calibrated"
+        },
+        "STAGE_1_RECONNAISSANCE": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_2_INITIAL_ACCESS": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_3_DISCOVERY": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_4_C2_PERSISTENCE": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_5_LATERAL_MOVEMENT": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_6_EXFILTRATION": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        }
+      }
+    },
+    "STAGE_1_RECONNAISSANCE": {
+      "stage_id": "STAGE_1_RECONNAISSANCE",
+      "total_observed_transitions": 391,
+      "confidence_tier": "HIGH_CONFIDENCE_CALIBRATED",
+      "pairs": {
+        "STAGE_0_BENIGN": {
+          "observed_n": 0,
+          "probability": 0.0037,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_1_RECONNAISSANCE": {
+          "observed_n": 337,
+          "probability": 0.8454,
+          "status": "calibrated"
+        },
+        "STAGE_2_INITIAL_ACCESS": {
+          "observed_n": 19,
+          "probability": 0.0636,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_3_DISCOVERY": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_4_C2_PERSISTENCE": {
+          "observed_n": 28,
+          "probability": 0.0698,
+          "status": "calibrated"
+        },
+        "STAGE_5_LATERAL_MOVEMENT": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_6_EXFILTRATION": {
+          "observed_n": 7,
+          "probability": 0.0175,
+          "status": "smoothed_with_prior"
+        }
+      }
+    },
+    "STAGE_2_INITIAL_ACCESS": {
+      "stage_id": "STAGE_2_INITIAL_ACCESS",
+      "total_observed_transitions": 4388,
+      "confidence_tier": "HIGH_CONFIDENCE_CALIBRATED",
+      "pairs": {
+        "STAGE_0_BENIGN": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_1_RECONNAISSANCE": {
+          "observed_n": 37,
+          "probability": 0.0084,
+          "status": "calibrated"
+        },
+        "STAGE_2_INITIAL_ACCESS": {
+          "observed_n": 2771,
+          "probability": 0.6306,
+          "status": "calibrated"
+        },
+        "STAGE_3_DISCOVERY": {
+          "observed_n": 0,
+          "probability": 0.0009,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_4_C2_PERSISTENCE": {
+          "observed_n": 29,
+          "probability": 0.0074,
+          "status": "calibrated"
+        },
+        "STAGE_5_LATERAL_MOVEMENT": {
+          "observed_n": 1,
+          "probability": 0.0002,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_6_EXFILTRATION": {
+          "observed_n": 1550,
+          "probability": 0.3524,
+          "status": "calibrated"
+        }
+      }
+    },
+    "STAGE_3_DISCOVERY": {
+      "stage_id": "STAGE_3_DISCOVERY",
+      "total_observed_transitions": 0,
+      "confidence_tier": "LOW_CONFIDENCE_INHERITED_PRIOR",
+      "pairs": {
+        "STAGE_0_BENIGN": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_1_RECONNAISSANCE": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_2_INITIAL_ACCESS": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_3_DISCOVERY": {
+          "observed_n": 0,
+          "probability": 0.2,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_4_C2_PERSISTENCE": {
+          "observed_n": 0,
+          "probability": 0.45,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_5_LATERAL_MOVEMENT": {
+          "observed_n": 0,
+          "probability": 0.35,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_6_EXFILTRATION": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "inherited_expert_default"
+        }
+      }
+    },
+    "STAGE_4_C2_PERSISTENCE": {
+      "stage_id": "STAGE_4_C2_PERSISTENCE",
+      "total_observed_transitions": 332,
+      "confidence_tier": "HIGH_CONFIDENCE_CALIBRATED",
+      "pairs": {
+        "STAGE_0_BENIGN": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_1_RECONNAISSANCE": {
+          "observed_n": 27,
+          "probability": 0.0789,
+          "status": "calibrated"
+        },
+        "STAGE_2_INITIAL_ACCESS": {
+          "observed_n": 30,
+          "probability": 0.0877,
+          "status": "calibrated"
+        },
+        "STAGE_3_DISCOVERY": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_4_C2_PERSISTENCE": {
+          "observed_n": 274,
+          "probability": 0.807,
+          "status": "calibrated"
+        },
+        "STAGE_5_LATERAL_MOVEMENT": {
+          "observed_n": 1,
+          "probability": 0.0146,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_6_EXFILTRATION": {
+          "observed_n": 0,
+          "probability": 0.0117,
+          "status": "smoothed_with_prior"
+        }
+      }
+    },
+    "STAGE_5_LATERAL_MOVEMENT": {
+      "stage_id": "STAGE_5_LATERAL_MOVEMENT",
+      "total_observed_transitions": 2,
+      "confidence_tier": "LOW_CONFIDENCE_INHERITED_PRIOR",
+      "pairs": {
+        "STAGE_0_BENIGN": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_1_RECONNAISSANCE": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_2_INITIAL_ACCESS": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_3_DISCOVERY": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_4_C2_PERSISTENCE": {
+          "observed_n": 2,
+          "probability": 0.0,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_5_LATERAL_MOVEMENT": {
+          "observed_n": 0,
+          "probability": 0.1,
+          "status": "inherited_expert_default"
+        },
+        "STAGE_6_EXFILTRATION": {
+          "observed_n": 0,
+          "probability": 0.9,
+          "status": "inherited_expert_default"
+        }
+      }
+    },
+    "STAGE_6_EXFILTRATION": {
+      "stage_id": "STAGE_6_EXFILTRATION",
+      "total_observed_transitions": 2445,
+      "confidence_tier": "HIGH_CONFIDENCE_CALIBRATED",
+      "pairs": {
+        "STAGE_0_BENIGN": {
+          "observed_n": 0,
+          "probability": 0.0002,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_1_RECONNAISSANCE": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_2_INITIAL_ACCESS": {
+          "observed_n": 1552,
+          "probability": 0.6322,
+          "status": "calibrated"
+        },
+        "STAGE_3_DISCOVERY": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_4_C2_PERSISTENCE": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_5_LATERAL_MOVEMENT": {
+          "observed_n": 0,
+          "probability": 0.0,
+          "status": "smoothed_with_prior"
+        },
+        "STAGE_6_EXFILTRATION": {
+          "observed_n": 893,
+          "probability": 0.3676,
+          "status": "calibrated"
+        }
+      }
+    }
+  },
+  "dwell_provenance": {
+    "STAGE_0_BENIGN": {
+      "duration_min": 0.0,
+      "empirical_mean_min": 0.2,
+      "sample_size": 22714,
+      "status": "expert_prior_default"
+    },
+    "STAGE_1_RECONNAISSANCE": {
+      "duration_min": 8.3,
+      "empirical_mean_min": 6.6,
+      "sample_size": 65,
+      "status": "calibrated_empirical"
+    },
+    "STAGE_2_INITIAL_ACCESS": {
+      "duration_min": 15.0,
+      "empirical_mean_min": 0.2,
+      "sample_size": 1622,
+      "status": "expert_prior_default"
+    },
+    "STAGE_3_DISCOVERY": {
+      "duration_min": 12.0,
+      "empirical_mean_min": null,
+      "sample_size": 0,
+      "status": "expert_prior_default"
+    },
+    "STAGE_4_C2_PERSISTENCE": {
+      "duration_min": 13.2,
+      "empirical_mean_min": 8.4,
+      "sample_size": 60,
+      "status": "calibrated_empirical"
+    },
+    "STAGE_5_LATERAL_MOVEMENT": {
+      "duration_min": 22.0,
+      "empirical_mean_min": 0.1,
+      "sample_size": 2,
+      "status": "expert_prior_default"
+    },
+    "STAGE_6_EXFILTRATION": {
+      "duration_min": 0.0,
+      "empirical_mean_min": 0.1,
+      "sample_size": 1557,
+      "status": "expert_prior_default"
+    }
+  }
+}

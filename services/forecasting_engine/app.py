@@ -226,6 +226,13 @@ def get_timeline_forecast():
             "forecast_15m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.95, "time_min": 0},
             "forecast_30m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.92, "time_min": 0},
             "forecast_60m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.88, "time_min": 0},
+            "provenance": {
+                "current_stage": "default_no_hosts",
+                "horizon_projection": "calibrated_baseline" if forecaster.priors_calibrated else "expert_prior_baseline",
+                "time_to_compromise": "zero_threat_baseline",
+                "feature_attributions": "none",
+                "priors_source": forecaster.priors_source
+            },
             "message": "No active monitored hosts. Run a simulation or ingest PCAP/flow data.",
         }
 

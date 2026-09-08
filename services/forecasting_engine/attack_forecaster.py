@@ -114,6 +114,7 @@ class AttackForecastResult:
     feature_attributions: List[Dict[str, Any]]  # Dynamic perturbation-based feature contribution weights
     preemptive_actions: List[Dict[str, Any]]
     hardware_relay_required: bool = False  # Simulated hardware air-gap trip signal (software emulation)
+    provenance: Dict[str, Any] = field(default_factory=dict)
     
     @property
     def shap_explanations(self) -> List[Dict[str, Any]]:
@@ -128,8 +129,13 @@ class AttackForecastingEngine:
     """
 
     def __init__(self):
-        # Baseline Markov State Transition Matrix (Stage i -> Stage j)
-        self.transition_matrix = {
+        # ---------------------------------------------------------------------
+        # EXPERT-DEFINED PRIOR — these transition probabilities are domain-knowledge
+        # estimates, not learned from data. They seed the Markov rollout that projects
+        # the GRU's current-stage distribution forward in time when empirical calibration
+        # data is unavailable or has low sample support (N < 20).
+        # ---------------------------------------------------------------------
+        self.DEFAULT_TRANSITION_MATRIX = {
             "STAGE_0_BENIGN": {"STAGE_0_BENIGN": 0.85, "STAGE_1_RECONNAISSANCE": 0.15},
             "STAGE_1_RECONNAISSANCE": {"STAGE_1_RECONNAISSANCE": 0.20, "STAGE_2_INITIAL_ACCESS": 0.65, "STAGE_0_BENIGN": 0.15},
             "STAGE_2_INITIAL_ACCESS": {"STAGE_2_INITIAL_ACCESS": 0.25, "STAGE_3_DISCOVERY": 0.40, "STAGE_4_C2_PERSISTENCE": 0.35},
@@ -139,19 +145,53 @@ class AttackForecastingEngine:
             "STAGE_6_EXFILTRATION": {"STAGE_6_EXFILTRATION": 0.95, "STAGE_0_BENIGN": 0.05}
         }
 
-        # Build 7x7 stochastic numpy matrix for Markov rollout projections
-        self.transition_matrix_np = np.zeros((len(STAGES), len(STAGES)), dtype=np.float32)
-        for from_stage, targets in self.transition_matrix.items():
-            from_idx = STAGES.index(from_stage)
-            for to_stage, p in targets.items():
-                to_idx = STAGES.index(to_stage)
-                self.transition_matrix_np[from_idx, to_idx] = p
-        for i in range(len(STAGES)):
-            row_sum = self.transition_matrix_np[i].sum()
-            if row_sum > 0:
-                self.transition_matrix_np[i] /= row_sum
-            else:
-                self.transition_matrix_np[i, i] = 1.0
+        # ---------------------------------------------------------------------
+        # EXPERT-DEFINED PRIOR — average dwell time per kill-chain stage in minutes,
+        # based on published APT campaign analysis, not learned from telemetry.
+        # Used as baseline for TTC (Time-To-Compromise) estimation.
+        # ---------------------------------------------------------------------
+        self.DEFAULT_STAGE_DURATIONS = [0.0, 10.0, 15.0, 12.0, 18.0, 22.0, 0.0]
+
+        # Attempt loading empirical priors calibrated from CTU-13 dataset
+        priors_file = os.path.join(os.path.dirname(__file__), "priors.json")
+        self.priors_calibrated = False
+        if os.path.exists(priors_file):
+            try:
+                import json
+                with open(priors_file, "r") as f:
+                    priors_data = json.load(f)
+                self.transition_matrix = priors_data["transition_matrix"]
+                self.transition_matrix_np = np.array(priors_data["transition_matrix_array"], dtype=np.float32)
+                self.stage_durations = priors_data.get("stage_durations_min", self.DEFAULT_STAGE_DURATIONS)
+                n_transitions = priors_data.get("metadata", {}).get("total_observed_transitions", 0)
+                self.priors_source = f"CTU-13 empirical calibration (N={n_transitions} observed transitions)"
+                self.priors_calibrated = True
+                logger.info(f"[Priors Calibrated] Loaded empirical Markov transition matrix & dwell times from priors.json (sample_size={n_transitions})")
+            except Exception as e:
+                logger.warning(f"[Priors Fallback] Could not parse priors.json ({e}); using expert-defined prior fallback")
+                self.transition_matrix = self.DEFAULT_TRANSITION_MATRIX
+                self.stage_durations = self.DEFAULT_STAGE_DURATIONS
+                self.priors_source = "expert_prior_default"
+        else:
+            logger.warning("[Priors Fallback] priors.json not found; using expert-defined prior transition matrix & dwell times")
+            self.transition_matrix = self.DEFAULT_TRANSITION_MATRIX
+            self.stage_durations = self.DEFAULT_STAGE_DURATIONS
+            self.priors_source = "expert_prior_default"
+
+        if not self.priors_calibrated:
+            # Build 7x7 stochastic numpy matrix from expert fallback
+            self.transition_matrix_np = np.zeros((len(STAGES), len(STAGES)), dtype=np.float32)
+            for from_stage, targets in self.transition_matrix.items():
+                from_idx = STAGES.index(from_stage)
+                for to_stage, p in targets.items():
+                    to_idx = STAGES.index(to_stage)
+                    self.transition_matrix_np[from_idx, to_idx] = p
+            for i in range(len(STAGES)):
+                row_sum = self.transition_matrix_np[i].sum()
+                if row_sum > 0:
+                    self.transition_matrix_np[i] /= row_sum
+                else:
+                    self.transition_matrix_np[i, i] = 1.0
 
         # Load trained PyTorch GRU neural model
         self.device = torch.device("cpu")
@@ -454,7 +494,9 @@ class AttackForecastingEngine:
         # ---------------------------------------------------------------------
         # Step 3: Time-to-Compromise (TTC) Dynamic Calculation
         # ---------------------------------------------------------------------
-        stage_durations = [0.0, 10.0, 15.0, 12.0, 18.0, 22.0, 0.0]
+        # EXPERT-DEFINED PRIOR — average dwell time per kill-chain stage in minutes,
+        # based on published APT campaign analysis, calibrated against CTU-13 where available.
+        stage_durations = self.stage_durations
 
         if stage_idx == 0:
             time_to_compromise_min = 0.0
@@ -557,6 +599,20 @@ class AttackForecastingEngine:
                 "target": blast_radius[0] if blast_radius else "192.168.1.50"
             })
 
+        # ---------------------------------------------------------------------
+        # Step 7: Explicit Methodology & Provenance Disclosure
+        # Distinguishes learned ML inference vs empirical calibration vs expert prior
+        # ---------------------------------------------------------------------
+        provenance = {
+            "current_stage": "gru_inference" if (self.gru_model and self.gru_loaded) else "heuristic_keyword_fallback",
+            "horizon_projection": "markov_rollout_calibrated_prior" if self.priors_calibrated else "markov_rollout_expert_prior",
+            "time_to_compromise": "formula_with_calibrated_durations" if self.priors_calibrated else "formula_with_expert_prior_durations",
+            "feature_attributions": "perturbation_analysis_on_gru_input" if (self.gru_model and self.gru_loaded) else "heuristic_feature_weights",
+            "priors_source": self.priors_source,
+            "calibrated_transitions_file": "services/forecasting_engine/priors.json" if self.priors_calibrated else "not_loaded",
+            "neural_model_file": "services/forecasting_engine/models/temporal_gru_forecaster.pt" if self.gru_loaded else "not_loaded"
+        }
+
         return AttackForecastResult(
             host_ip=host_ip,
             timestamp=now,
@@ -570,7 +626,8 @@ class AttackForecastingEngine:
             blast_radius_nodes=blast_radius,
             feature_attributions=top_attributions,
             preemptive_actions=preemptive_actions,
-            hardware_relay_required=relay_required
+            hardware_relay_required=relay_required,
+            provenance=provenance
         )
 
 
