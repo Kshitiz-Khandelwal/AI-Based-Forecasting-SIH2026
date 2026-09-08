@@ -23,13 +23,13 @@ $$\text{TTC}(s, \mathbf{x}) = \left(\sum_{k=s+1}^{6} T_k\right) \times \left(1.0
 
 Where:
 1. **$s \in \{0, 1, 2, 3, 4, 5, 6\}$**: Current classified kill-chain stage index from GRU model output.
-2. **$T_k$**: Canonical baseline stage duration constants (minutes):
-   - $T_1$ (Reconnaissance): $10.0\text{ min}$
-   - $T_2$ (Initial Access): $15.0\text{ min}$
-   - $T_3$ (Discovery): $12.0\text{ min}$
-   - $T_4$ (C2 Persistence): $18.0\text{ min}$
-   - $T_5$ (Lateral Movement): $22.0\text{ min}$
-   - $T_6$ (Exfiltration / Impact): $0.0\text{ min}$ (Terminal state)
+2. **$T_k$**: Empirical contiguous-run stage duration priors from `priors.json` (minutes):
+   - $T_1$ (Reconnaissance): $8.4\text{ min}$ (`calibrated_empirical`, $N=65$ runs)
+   - $T_2$ (Initial Access): $15.3\text{ min}$ (`calibrated_empirical`, $N=1,622$ runs)
+   - $T_3$ (Discovery): $12.0\text{ min}$ (`expert_prior_default`, $N=0$ runs, untested)
+   - $T_4$ (C2 Persistence): $19.7\text{ min}$ (`calibrated_empirical`, $N=60$ runs)
+   - $T_5$ (Lateral Movement): $22.0\text{ min}$ (`expert_prior_default`, $N=2$ runs)
+   - $T_6$ (Exfiltration / Impact): $0.0\text{ min}$ (`terminal_boundary_zero`)
 3. **$\text{burst\_qps}$**: Measured query / flow burst rate over the 900-second session window. Automated APT scripting with high burst velocity compresses phase duration by up to $45\%$.
 4. **$C \in [0.0, 1.0]$**: Current stage model confidence. High confidence projects streamlined attacker advancement ($0.60\times$), whereas low confidence models attacker hesitation and dwell time ($1.00\times$).
 5. **Boundary Conditions**: For Benign ($s=0$) and Terminal Exfiltration ($s=6$), $\text{TTC} = 0.0\text{ min}$.

@@ -395,9 +395,9 @@ Traditional intrusion detection is **reactive**: it alerts you *after* a comprom
 ```
                        TEMPORAL ATTACK FORECASTING HORIZON
                        
-[Network Flows & DNS] ──► [Temporal Session Buffer] ──► [Bi-LSTM / TGNN Model]
-                          (Sliding 15-min Window)                  │
-                                                                   ▼
+[Network Flows & DNS] ──► [10-Step Flow Tensor (16 Feats)] ──► [PyTorch 2-Layer GRU]
+                          (Sliding Feature Windows)                    │
+                                                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────────────────────┐
 │ Current State (t = 0m)   : Initial Access / DGA Contact (Confidence: 95%)                 │
 │ Forecasted Next (t + 15m): C2 Beaconing via Cobalt Strike Profile (Confidence: 89%)       │
@@ -405,19 +405,20 @@ Traditional intrusion detection is **reactive**: it alerts you *after* a comprom
 │ Projected Impact (t + 60m: Mass Exfiltration via DNS Tunneling Chunking (Confidence: 84%) │
 │                                                                                           │
 │ 🛡️ PREEMPTIVE AUTONOMOUS COUNTERMEASURE:                                                   │
-│   1. Deploy honeypot decoy route along projected lateral path (192.168.1.50).             │
+│   1. Deploy honeypot decoy route along projected lateral path.                            │
 │   2. Pre-stage dynamic firewall rule restricting outbound UDP 53 for host VLAN.          │
-│   3. Arm physical hardware air-gap relay on Zephyr RTOS Sentinel.                         │
+│   3. Arm physical hardware air-gap relay on Zephyr RTOS Sentinel (GPIO 18).               │
 └───────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Mathematical Sequence Formulation:
-The forecasting engine calculates the conditional probability of the future MITRE stage:
-$$P(\text{Stage}_{t+\Delta t} = S_k \mid \mathcal{H}_t)$$
-Where:
-- $\mathcal{H}_t = \{(e_1, t_1), (e_2, t_2), \dots, (e_t, t_t)\}$ is the historical sequence of observed telemetry events up to time $t$.
-- $S_k \in \{\text{Recon}, \text{Access}, \text{Discovery}, \text{C2}, \text{Lateral}, \text{Exfiltration}\}$.
-- $\Delta t \in \{5\text{m}, 15\text{m}, 30\text{m}, 60\text{m}\}$ represents the projection time horizons.
+### The 16 Neural GRU Network Flow Features:
+The sequence forecaster processes 10 consecutive flow windows across **exactly 16 extracted features** (`temporal_feature_extractor.py::FEATURE_NAMES`):
+`duration_sec`, `total_packets`, `total_bytes`, `src_bytes`, `dst_bytes`, `bytes_per_sec`, `packets_per_sec`, `avg_packet_size`, `is_tcp`, `is_udp`, `is_icmp`, `is_dns_port`, `is_web_port`, `is_lateral_port`, `is_internal_dst`, `is_syn_or_scan`.
+
+### Mathematical Sequence Formulation & Markov Rollout:
+1. **Current State Classification**: $\mathbf{s}_0 = \text{GRU}(\mathbf{X}_{10 \times 16})$
+2. **Markov Future Projection**: $\mathbf{s}_k = \mathbf{s}_0 \cdot \mathbf{P}^k$, where $\mathbf{P}$ is the CTU-13 calibrated transition matrix ($N=60,273$).
+3. **Calibrated Dwell Times**: Recon $8.4\text{m}$ ($N=65$ runs), Initial Access $15.3\text{m}$ ($N=1,622$ runs), Discovery $12.0\text{m}$ ($N=0$, expert default, flagged untested), C2 $19.7\text{m}$ ($N=60$ runs), Lateral $22.0\text{m}$ ($N=2$, expert default).
 
 ---
 
