@@ -35,6 +35,7 @@ export interface PipelineRailProps {
   stages?: StageDetail[];
   verdict?: "ALLOW" | "FLAG" | "BLOCK";
   domain?: string;
+  riskScore?: number;
   autoPlay?: boolean;
   onStageSelect?: (stage: StageDetail) => void;
   className?: string;
@@ -131,6 +132,7 @@ export function PipelineRail({
   stages = DEFAULT_STAGES,
   verdict = "BLOCK",
   domain = "xq9m2kz7v4naplq.top",
+  riskScore,
   autoPlay = true,
   onStageSelect,
   className
@@ -178,10 +180,21 @@ export function PipelineRail({
     return () => clearInterval(interval);
   }, [domain, stages, autoPlay]);
 
+  // Compute total and target risk
+  const totalStageContribution = stages.reduce((sum, s) => sum + (s.contribution || 0), 0);
+  const targetTotal = riskScore !== undefined ? riskScore : totalStageContribution;
+
   // Compute running accumulated score up to active step
-  const runningScore = stages
+  const rawRunningScore = stages
     .slice(0, activeStep + 1)
-    .reduce((sum, s) => sum + s.contribution, 0);
+    .reduce((sum, s) => sum + (s.contribution || 0), 0);
+
+  // Reconciled score: accumulates across stages and locks to targetTotal at the final step
+  const runningScore = (activeStep === stages.length - 1 && targetTotal >= 0)
+    ? targetTotal
+    : (totalStageContribution > 0
+        ? Math.min(rawRunningScore, targetTotal || 100)
+        : Math.round((targetTotal * (activeStep + 1)) / Math.max(stages.length, 1)));
 
   const selectedStage = stages.find((s) => s.id === selectedStageId) || stages[0];
 

@@ -569,7 +569,7 @@ export default function ForecastPage() {
             </div>
           </div>
           <button
-            onClick={fetchForecast}
+            onClick={() => fetchForecast()}
             className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg shrink-0 transition-colors"
           >
             Retry Connection
