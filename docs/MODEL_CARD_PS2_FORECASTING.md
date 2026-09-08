@@ -62,30 +62,38 @@ Where:
 
 ## 6. Provenance & Empirical Calibration of Priors (CTU-13 Dataset)
 
-To ensure scientific honesty and transparency, DNS Shield explicitly separates **trained neural model parameters**, **data-calibrated transition priors**, and **domain-expert baseline assumptions**:
+To ensure scientific honesty and transparency, DNS Shield explicitly separates **trained neural model parameters**, **transition matrix calibration**, and **dwell-time velocity calibration**. The two calibration dimensions are evaluated and reported independently—never conflated into a single blended badge.
 
-| Component | Methodology | Source | Confidence Tier |
-| :--- | :--- | :--- | :--- |
-| **Current Stage Classification** | PyTorch 2-Layer GRU Forward Pass | `temporal_gru_forecaster.pt` | **Learned from Data** (71.3% test accuracy) |
-| **Feature Explanations** | Continuous Input Perturbation Sensitivity | Real-time GRU tensor perturbation | **Dynamic Input Gradient** |
-| **Markov Horizon (+15m/+30m/+60m)** | Empirical Transition Matrix ($\mathbf{P} \cdot M^k$) | `services/forecasting_engine/priors.json` (via `calibrate_priors.py`) | **Empirically Calibrated** (60,273 transitions) |
-| **Stage 0, 1, 2, 4, 6 Transitions** | Bayesian Smoothed Transition Counts ($N \ge 20$) | CTU-13 NetFlow (83,010 flows, 5 scenarios) | **High Confidence Calibrated** |
-| **Stage 3 (Discovery) Transitions** | Domain-Expert Prior ($N < 20$) | Published APT Campaign Analysis | **Low-Confidence Prior (Inherited Default)** |
-| **Stage 5 (Lateral) Transitions** | Domain-Expert Prior ($N = 2$) | Published APT Campaign Analysis | **Low-Confidence Prior (Inherited Default)** |
-| **Stage Dwell Times (TTC)** | Blended CTU-13 Run Durations + Expert Priors | `priors.json` (`[0, 8.3, 15, 12, 13.2, 22, 0]` min) | **Hybrid Calibrated Prior** |
+### Dual-Provenance Stage Audit Table
 
-### Calibration Sample Size Audit (CTU-13 Multistage NetFlow)
-Generated via `python services/forecasting_engine/calibrate_priors.py`:
-- **Total Labeled Flows**: $83,010$ across 5 CTU-13 botnet scenarios.
-- **Total Observed Transitions**: $60,273$ sequential stage-to-stage transitions.
-- **Observed Transitions by Originating Stage**:
-  - `STAGE_0_BENIGN`: $N = 52,715$ transitions $\to$ **High Confidence**
-  - `STAGE_1_RECONNAISSANCE`: $N = 391$ transitions $\to$ **High Confidence** (Dwell time: $8.3\text{ min}$)
-  - `STAGE_2_INITIAL_ACCESS`: $N = 4,388$ transitions $\to$ **High Confidence** (Dwell time: $15.0\text{ min}$)
-  - `STAGE_3_DISCOVERY`: $N = 0$ transitions $\to$ **Low-Confidence Inherited Prior** (No internal sweeps in CTU-13 capture)
-  - `STAGE_4_C2_PERSISTENCE`: $N = 332$ transitions $\to$ **High Confidence** (Dwell time: $13.2\text{ min}$)
-  - `STAGE_5_LATERAL_MOVEMENT`: $N = 2$ transitions $\to$ **Low-Confidence Inherited Prior** (CTU-13 was single-host botnet egress)
-  - `STAGE_6_EXFILTRATION`: $N = 2,445$ transitions $\to$ **High Confidence**
+| Stage ID | Transition Sample Size ($N$) | Transition Calibration Status | Contiguous Runs ($N$) | Dwell Time | Dwell Time Calibration Status | Data Coverage |
+| :--- | :---: | :--- | :---: | :---: | :--- | :--- |
+| `STAGE_0_BENIGN` | $52,715$ | `calibrated_empirical` | $22,714$ | $0.0\text{ min}$ | `terminal_boundary_zero` | `calibrated_empirical` |
+| `STAGE_1_RECONNAISSANCE` | $391$ | `calibrated_empirical` | $65$ | $8.4\text{ min}$ | `calibrated_empirical` | `calibrated_empirical` |
+| `STAGE_2_INITIAL_ACCESS` | $4,388$ | `calibrated_empirical` | $1,622$ | $15.3\text{ min}$ | `calibrated_empirical` | `calibrated_empirical` |
+| `STAGE_3_DISCOVERY` | $0$ | `expert_prior_default` | $0$ | $12.0\text{ min}$ | `expert_prior_default` | `no_real_examples_observed` ⚠ |
+| `STAGE_4_C2_PERSISTENCE` | $332$ | `calibrated_empirical` | $60$ | $19.7\text{ min}$ | `calibrated_empirical` | `calibrated_empirical` |
+| `STAGE_5_LATERAL_MOVEMENT` | $2$ | `expert_prior_default` | $2$ | $22.0\text{ min}$ | `expert_prior_default` | `sparse_empirical_reverted_to_default` |
+| `STAGE_6_EXFILTRATION` | $2,445$ | `calibrated_empirical` | $1,557$ | $0.0\text{ min}$ | `terminal_boundary_zero` | `calibrated_empirical` |
+
+---
+
+### Methodological Fixes Applied in Calibration (`calibrate_priors.py`)
+
+1. **Fix 1 — Scaled Bayesian Smoothing & Escalation Sanity Floor**:
+   - **Problem**: With a fixed $\alpha = 10$ pseudo-count, the $52,715$ benign-benign observations overwhelmed the expert escalation prior, collapsing $P(\text{Benign} \to \text{Recon})$ to $2.8 \times 10^{-5}$ and preventing the system from forecasting attack onset from a clean baseline.
+   - **Solution**: Implemented an effective sample size ceiling (`eff_sum = min(row_sum, 1000)`) with row-scaled smoothing weight $\alpha = \max(10, 0.08 \times \text{eff\_sum})$ and an explicit sanity floor ($2.5\%$) on documented escalation paths.
+   - **Result**: $P(\text{Benign} \to \text{Recon})$ is calibrated at **$0.024658$ (~$2.47\%$)**, maintaining baseline stability ($P(0 \to 0) = 0.975342$) while retaining realistic sensitivity to attack onset.
+
+2. **Fix 2 — Option A Contiguous Run Dwell-Time Calculation**:
+   - **Problem**: Measuring delta between adjacent CSV flow rows measured NetFlow packet capture intervals rather than attacker dwell time, resulting in near-zero means.
+   - **Solution**: Computed dwell time per *contiguous stage run* using the wall-clock span from the `StartTime` of the first flow to the `StartTime` of the last flow in that run plus that flow's `Dur` duration. Stages with $N < 20$ runs (`STAGE_3_DISCOVERY` $N=0$, `STAGE_5_LATERAL` $N=2$) explicitly revert to domain-expert defaults and are transparently labeled `expert_prior_default`.
+
+3. **Fix 3 — Full-Precision Consistency in `priors.json`**:
+   - Removed the arbitrary `if prob > 0.01` filter that caused human-readable `transition_matrix` to diverge from runtime `transition_matrix_array`. Both now reflect identical 6-decimal values.
+
+4. **Fix 5 — Explicit Warning for Untested Discovery Stage**:
+   - `STAGE_3_DISCOVERY` had zero observed flows in CTU-13 (the dataset captured external botnet traffic without internal subnet scanning). It is tagged `"data_coverage": "no_real_examples_observed"` and badged with `⚠ untested on real traffic` across the UI and API.
 
 ### API Provenance Object
 Every response from `/forecast/{host}` and `/forecast/timeline` includes the `provenance` dictionary:
@@ -95,7 +103,7 @@ Every response from `/forecast/{host}` and `/forecast/timeline` includes the `pr
   "horizon_projection": "markov_rollout_calibrated_prior",
   "time_to_compromise": "formula_with_calibrated_durations",
   "feature_attributions": "perturbation_analysis_on_gru_input",
-  "priors_source": "CTU-13 empirical calibration (N=60273 observed transitions)",
+  "priors_source": "CTU-13 empirical calibration (N=60273 transitions, Option A contiguous run dwell times)",
   "calibrated_transitions_file": "services/forecasting_engine/priors.json",
   "neural_model_file": "services/forecasting_engine/models/temporal_gru_forecaster.pt"
 }

@@ -119,6 +119,7 @@ def _forecast_to_dict(result) -> Dict[str, Any]:
             "color": v["color"],
             "mitre_tactics": v["mitre_tactics"],
             "description": v["description"],
+            "data_coverage": v.get("data_coverage", "calibrated_empirical"),
         }
         for k, v in STAGE_METADATA.items()
     }
@@ -132,6 +133,7 @@ def _forecast_to_dict(result) -> Dict[str, Any]:
         "confidence": h15["probability"],
         "time_min": h15["estimated_time_to_stage_min"],
         "confidence_cone": h15["confidence_cone"],
+        "data_coverage": STAGE_METADATA.get(h15["stage_id"], {}).get("data_coverage", "calibrated_empirical"),
     }
     d["forecast_30m"] = {
         "stage": h30["stage_id"],
@@ -139,6 +141,7 @@ def _forecast_to_dict(result) -> Dict[str, Any]:
         "confidence": h30["probability"],
         "time_min": h30["estimated_time_to_stage_min"],
         "confidence_cone": h30["confidence_cone"],
+        "data_coverage": STAGE_METADATA.get(h30["stage_id"], {}).get("data_coverage", "calibrated_empirical"),
     }
     d["forecast_60m"] = {
         "stage": h60["stage_id"],
@@ -146,6 +149,7 @@ def _forecast_to_dict(result) -> Dict[str, Any]:
         "confidence": h60["probability"],
         "time_min": h60["estimated_time_to_stage_min"],
         "confidence_cone": h60["confidence_cone"],
+        "data_coverage": STAGE_METADATA.get(h60["stage_id"], {}).get("data_coverage", "calibrated_empirical"),
     }
     # Provide feature_attributions as primary, shap_explanations as alias
     d["feature_attributions"] = d.get("feature_attributions", [])
@@ -218,14 +222,15 @@ def get_timeline_forecast():
             "time_to_compromise_min": 0.0,
             "all_stages": {k: {"label": v["label"], "severity": v["severity"],
                                "color": v["color"], "mitre_tactics": v["mitre_tactics"],
-                               "description": v["description"]} for k, v in STAGE_METADATA.items()},
+                               "description": v["description"],
+                               "data_coverage": v.get("data_coverage", "calibrated_empirical")} for k, v in STAGE_METADATA.items()},
             "shap_explanations": [],
             "preemptive_actions": [],
             "blast_radius_nodes": [],
             "hardware_relay_required": False,
-            "forecast_15m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.95, "time_min": 0},
-            "forecast_30m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.92, "time_min": 0},
-            "forecast_60m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.88, "time_min": 0},
+            "forecast_15m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.95, "time_min": 0, "data_coverage": "calibrated_empirical"},
+            "forecast_30m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.92, "time_min": 0, "data_coverage": "calibrated_empirical"},
+            "forecast_60m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.88, "time_min": 0, "data_coverage": "calibrated_empirical"},
             "provenance": {
                 "current_stage": "default_no_hosts",
                 "horizon_projection": "calibrated_baseline" if forecaster.priors_calibrated else "expert_prior_baseline",
@@ -263,14 +268,15 @@ def get_host_forecast(host_ip: str):
             "time_to_compromise_min": 0.0,
             "all_stages": {k: {"label": v["label"], "severity": v["severity"],
                                "color": v["color"], "mitre_tactics": v["mitre_tactics"],
-                               "description": v["description"]} for k, v in STAGE_METADATA.items()},
+                               "description": v["description"],
+                               "data_coverage": v.get("data_coverage", "calibrated_empirical")} for k, v in STAGE_METADATA.items()},
             "shap_explanations": [],
             "preemptive_actions": [],
             "blast_radius_nodes": [],
             "hardware_relay_required": False,
-            "forecast_15m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.95, "time_min": 0},
-            "forecast_30m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.92, "time_min": 0},
-            "forecast_60m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.88, "time_min": 0},
+            "forecast_15m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.95, "time_min": 0, "data_coverage": "calibrated_empirical"},
+            "forecast_30m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.92, "time_min": 0, "data_coverage": "calibrated_empirical"},
+            "forecast_60m": {"stage": "STAGE_0_BENIGN", "label": "Benign", "confidence": 0.88, "time_min": 0, "data_coverage": "calibrated_empirical"},
             "message": f"Host {host_ip} is at clean baseline state with 0 anomaly flows.",
         }
     result = forecaster.evaluate_host_timeline(host_ip, flows)

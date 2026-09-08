@@ -43,49 +43,56 @@ STAGE_METADATA = {
         "severity": "LOW",
         "color": "#10b981",
         "mitre_tactics": ["TA0000 - Normal"],
-        "description": "Standard business and cloud DNS/IP traffic patterns."
+        "description": "Standard business and cloud DNS/IP traffic patterns.",
+        "data_coverage": "calibrated_empirical"
     },
     "STAGE_1_RECONNAISSANCE": {
         "label": "Network & DNS Reconnaissance",
         "severity": "LOW-MEDIUM",
         "color": "#f59e0b",
         "mitre_tactics": ["TA0043 - Reconnaissance", "T1595 - Active Scanning"],
-        "description": "Port sweeps, aggressive DNS enumeration, and target surface probing."
+        "description": "Port sweeps, aggressive DNS enumeration, and target surface probing.",
+        "data_coverage": "calibrated_empirical"
     },
     "STAGE_2_INITIAL_ACCESS": {
         "label": "Initial Access & DGA Contact",
         "severity": "MEDIUM",
         "color": "#f97316",
         "mitre_tactics": ["TA0001 - Initial Access", "T1566 - Phishing", "T1568 - Dynamic Resolution"],
-        "description": "Malicious DGA seed queries, homoglyph phishing lures, and initial payload delivery."
+        "description": "Malicious DGA seed queries, homoglyph phishing lures, and initial payload delivery.",
+        "data_coverage": "calibrated_empirical"
     },
     "STAGE_3_DISCOVERY": {
         "label": "Internal Subnet Discovery",
         "severity": "MEDIUM-HIGH",
         "color": "#e11d48",
         "mitre_tactics": ["TA0007 - Discovery", "T1046 - Network Service Discovery"],
-        "description": "Internal lateral port enumeration, LDAP/SMB sweeps, and service discovery."
+        "description": "Internal lateral port enumeration, LDAP/SMB sweeps, and service discovery.",
+        "data_coverage": "no_real_examples_observed"
     },
     "STAGE_4_C2_PERSISTENCE": {
         "label": "Command & Control (C2) Beaconing",
         "severity": "HIGH",
         "color": "#dc2626",
         "mitre_tactics": ["TA0011 - Command and Control", "T1071 - Application Layer Protocol"],
-        "description": "Periodic heartbeat pulses, Cobalt Strike beaconing, and DNS tunneling sync."
+        "description": "Periodic heartbeat pulses, Cobalt Strike beaconing, and DNS tunneling sync.",
+        "data_coverage": "calibrated_empirical"
     },
     "STAGE_5_LATERAL_MOVEMENT": {
         "label": "Lateral Movement & Privilege Escalation",
         "severity": "CRITICAL",
         "color": "#9333ea",
         "mitre_tactics": ["TA0008 - Lateral Movement", "T1021 - Remote Services"],
-        "description": "Cross-VLAN pivoting, token impersonation, and target database targeting."
+        "description": "Cross-VLAN pivoting, token impersonation, and target database targeting.",
+        "data_coverage": "sparse_empirical_reverted_to_default"
     },
     "STAGE_6_EXFILTRATION": {
         "label": "Data Exfiltration & Impact",
         "severity": "EMERGENCY",
         "color": "#7f1d1d",
         "mitre_tactics": ["TA0010 - Exfiltration", "T1048 - Exfiltration Over Alternative Protocol"],
-        "description": "High-entropy DNS tunneling byte streams, chunked Base64 exfiltration, and data egress."
+        "description": "High-entropy DNS tunneling byte streams, chunked Base64 exfiltration, and data egress.",
+        "data_coverage": "calibrated_empirical"
     }
 }
 

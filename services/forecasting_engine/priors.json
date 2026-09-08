@@ -1,50 +1,83 @@
 {
   "metadata": {
     "source_dataset": "CTU-13 Multistage NetFlow (5 scenarios, 83,010 flows)",
-    "calibrated_at": "2026-09-08T05:16:14.726623+00:00",
+    "calibrated_at": "2026-09-08T05:32:07.230453+00:00",
     "total_observed_transitions": 60273,
     "min_sample_threshold": 20,
+    "max_effective_samples_cap": 1000.0,
+    "min_sanity_floor": 0.025,
+    "dwell_time_methodology": "Option A: Contiguous Run Wall-Clock Span (StartTime to EndTime + Dur)",
     "script": "services/forecasting_engine/calibrate_priors.py"
   },
   "transition_matrix": {
     "STAGE_0_BENIGN": {
-      "STAGE_0_BENIGN": 1.0
+      "STAGE_0_BENIGN": 0.975342,
+      "STAGE_1_RECONNAISSANCE": 0.024658,
+      "STAGE_2_INITIAL_ACCESS": 0.0,
+      "STAGE_3_DISCOVERY": 0.0,
+      "STAGE_4_C2_PERSISTENCE": 0.0,
+      "STAGE_5_LATERAL_MOVEMENT": 0.0,
+      "STAGE_6_EXFILTRATION": 0.0
     },
     "STAGE_1_RECONNAISSANCE": {
-      "STAGE_1_RECONNAISSANCE": 0.8454,
-      "STAGE_2_INITIAL_ACCESS": 0.0636,
-      "STAGE_4_C2_PERSISTENCE": 0.0698,
-      "STAGE_6_EXFILTRATION": 0.0175
+      "STAGE_0_BENIGN": 0.024658,
+      "STAGE_1_RECONNAISSANCE": 0.801728,
+      "STAGE_2_INITIAL_ACCESS": 0.091866,
+      "STAGE_3_DISCOVERY": 0.0,
+      "STAGE_4_C2_PERSISTENCE": 0.065398,
+      "STAGE_5_LATERAL_MOVEMENT": 0.0,
+      "STAGE_6_EXFILTRATION": 0.01635
     },
     "STAGE_2_INITIAL_ACCESS": {
-      "STAGE_2_INITIAL_ACCESS": 0.6306,
-      "STAGE_6_EXFILTRATION": 0.3524
+      "STAGE_0_BENIGN": 0.0,
+      "STAGE_1_RECONNAISSANCE": 0.007807,
+      "STAGE_2_INITIAL_ACCESS": 0.603236,
+      "STAGE_3_DISCOVERY": 0.02963,
+      "STAGE_4_C2_PERSISTENCE": 0.032045,
+      "STAGE_5_LATERAL_MOVEMENT": 0.000211,
+      "STAGE_6_EXFILTRATION": 0.32707
     },
     "STAGE_3_DISCOVERY": {
+      "STAGE_0_BENIGN": 0.0,
+      "STAGE_1_RECONNAISSANCE": 0.0,
+      "STAGE_2_INITIAL_ACCESS": 0.0,
       "STAGE_3_DISCOVERY": 0.2,
       "STAGE_4_C2_PERSISTENCE": 0.45,
-      "STAGE_5_LATERAL_MOVEMENT": 0.35
+      "STAGE_5_LATERAL_MOVEMENT": 0.35,
+      "STAGE_6_EXFILTRATION": 0.0
     },
     "STAGE_4_C2_PERSISTENCE": {
-      "STAGE_1_RECONNAISSANCE": 0.0789,
-      "STAGE_2_INITIAL_ACCESS": 0.0877,
-      "STAGE_4_C2_PERSISTENCE": 0.807,
-      "STAGE_5_LATERAL_MOVEMENT": 0.0146,
-      "STAGE_6_EXFILTRATION": 0.0117
+      "STAGE_0_BENIGN": 0.0,
+      "STAGE_1_RECONNAISSANCE": 0.075301,
+      "STAGE_2_INITIAL_ACCESS": 0.083668,
+      "STAGE_3_DISCOVERY": 0.0,
+      "STAGE_4_C2_PERSISTENCE": 0.778983,
+      "STAGE_5_LATERAL_MOVEMENT": 0.032419,
+      "STAGE_6_EXFILTRATION": 0.02963
     },
     "STAGE_5_LATERAL_MOVEMENT": {
+      "STAGE_0_BENIGN": 0.0,
+      "STAGE_1_RECONNAISSANCE": 0.0,
+      "STAGE_2_INITIAL_ACCESS": 0.0,
+      "STAGE_3_DISCOVERY": 0.0,
+      "STAGE_4_C2_PERSISTENCE": 0.0,
       "STAGE_5_LATERAL_MOVEMENT": 0.1,
       "STAGE_6_EXFILTRATION": 0.9
     },
     "STAGE_6_EXFILTRATION": {
-      "STAGE_2_INITIAL_ACCESS": 0.6322,
-      "STAGE_6_EXFILTRATION": 0.3676
+      "STAGE_0_BENIGN": 0.024479,
+      "STAGE_1_RECONNAISSANCE": 0.0,
+      "STAGE_2_INITIAL_ACCESS": 0.575489,
+      "STAGE_3_DISCOVERY": 0.0,
+      "STAGE_4_C2_PERSISTENCE": 0.0,
+      "STAGE_5_LATERAL_MOVEMENT": 0.0,
+      "STAGE_6_EXFILTRATION": 0.400032
     }
   },
   "transition_matrix_array": [
     [
-      0.9999715504978662,
-      2.844950213371266e-05,
+      0.9753424657534248,
+      0.024657534246575345,
       0.0,
       0.0,
       0.0,
@@ -52,22 +85,22 @@
       0.0
     ],
     [
-      0.003740648379052369,
-      0.8453865336658354,
-      0.06359102244389027,
+      0.024657534246575345,
+      0.8017283864111457,
+      0.09186607340970933,
       0.0,
-      0.06982543640897755,
+      0.06539840474605566,
       0.0,
-      0.017456359102244388
+      0.016349601186513914
     ],
     [
       0.0,
-      0.008412914961346066,
-      0.6306275579809004,
-      0.0009095043201455207,
-      0.007389722601182355,
-      0.00022737608003638017,
-      0.35243292405638926
+      0.007807488436476585,
+      0.6032360984503191,
+      0.02962962962962963,
+      0.03204530875451569,
+      0.00021101320098585369,
+      0.3270704615280732
     ],
     [
       0.0,
@@ -80,12 +113,12 @@
     ],
     [
       0.0,
-      0.07894736842105263,
-      0.08771929824561403,
+      0.0753012048192771,
+      0.08366800535475233,
       0.0,
-      0.8070175438596491,
-      0.014619883040935672,
-      0.011695906432748537
+      0.7789825970548862,
+      0.032418563141454707,
+      0.02962962962962963
     ],
     [
       0.0,
@@ -97,147 +130,150 @@
       0.9
     ],
     [
-      0.00020366598778004074,
+      0.02447869446962829,
       0.0,
-      0.6321792260692465,
+      0.5754894162972521,
       0.0,
       0.0,
       0.0,
-      0.36761710794297353
+      0.4000318892331196
     ]
   ],
   "stage_durations_min": [
     0.0,
-    8.3,
-    15.0,
+    8.4,
+    15.3,
     12.0,
-    13.2,
+    19.7,
     22.0,
     0.0
   ],
-  "provenance_details": {
+  "transition_provenance": {
     "STAGE_0_BENIGN": {
       "stage_id": "STAGE_0_BENIGN",
       "total_observed_transitions": 52715,
-      "confidence_tier": "HIGH_CONFIDENCE_CALIBRATED",
+      "status": "calibrated_empirical",
+      "data_coverage": "observed_in_ctu13",
       "pairs": {
         "STAGE_0_BENIGN": {
           "observed_n": 52715,
-          "probability": 1.0,
+          "probability": 0.975342,
           "status": "calibrated"
         },
         "STAGE_1_RECONNAISSANCE": {
           "observed_n": 0,
-          "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "probability": 0.024658,
+          "status": "smoothed_prior_floor"
         },
         "STAGE_2_INITIAL_ACCESS": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_3_DISCOVERY": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_4_C2_PERSISTENCE": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_5_LATERAL_MOVEMENT": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_6_EXFILTRATION": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         }
       }
     },
     "STAGE_1_RECONNAISSANCE": {
       "stage_id": "STAGE_1_RECONNAISSANCE",
       "total_observed_transitions": 391,
-      "confidence_tier": "HIGH_CONFIDENCE_CALIBRATED",
+      "status": "calibrated_empirical",
+      "data_coverage": "observed_in_ctu13",
       "pairs": {
         "STAGE_0_BENIGN": {
           "observed_n": 0,
-          "probability": 0.0037,
-          "status": "smoothed_with_prior"
+          "probability": 0.024658,
+          "status": "smoothed_prior_floor"
         },
         "STAGE_1_RECONNAISSANCE": {
           "observed_n": 337,
-          "probability": 0.8454,
+          "probability": 0.801728,
           "status": "calibrated"
         },
         "STAGE_2_INITIAL_ACCESS": {
           "observed_n": 19,
-          "probability": 0.0636,
-          "status": "smoothed_with_prior"
+          "probability": 0.091866,
+          "status": "smoothed_prior_floor"
         },
         "STAGE_3_DISCOVERY": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_4_C2_PERSISTENCE": {
           "observed_n": 28,
-          "probability": 0.0698,
+          "probability": 0.065398,
           "status": "calibrated"
         },
         "STAGE_5_LATERAL_MOVEMENT": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_6_EXFILTRATION": {
           "observed_n": 7,
-          "probability": 0.0175,
-          "status": "smoothed_with_prior"
+          "probability": 0.01635,
+          "status": "smoothed_prior_floor"
         }
       }
     },
     "STAGE_2_INITIAL_ACCESS": {
       "stage_id": "STAGE_2_INITIAL_ACCESS",
       "total_observed_transitions": 4388,
-      "confidence_tier": "HIGH_CONFIDENCE_CALIBRATED",
+      "status": "calibrated_empirical",
+      "data_coverage": "observed_in_ctu13",
       "pairs": {
         "STAGE_0_BENIGN": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_1_RECONNAISSANCE": {
           "observed_n": 37,
-          "probability": 0.0084,
+          "probability": 0.007807,
           "status": "calibrated"
         },
         "STAGE_2_INITIAL_ACCESS": {
           "observed_n": 2771,
-          "probability": 0.6306,
+          "probability": 0.603236,
           "status": "calibrated"
         },
         "STAGE_3_DISCOVERY": {
           "observed_n": 0,
-          "probability": 0.0009,
-          "status": "smoothed_with_prior"
+          "probability": 0.02963,
+          "status": "smoothed_prior_floor"
         },
         "STAGE_4_C2_PERSISTENCE": {
           "observed_n": 29,
-          "probability": 0.0074,
+          "probability": 0.032045,
           "status": "calibrated"
         },
         "STAGE_5_LATERAL_MOVEMENT": {
           "observed_n": 1,
-          "probability": 0.0002,
-          "status": "smoothed_with_prior"
+          "probability": 0.000211,
+          "status": "smoothed_prior_floor"
         },
         "STAGE_6_EXFILTRATION": {
           "observed_n": 1550,
-          "probability": 0.3524,
+          "probability": 0.32707,
           "status": "calibrated"
         }
       }
@@ -245,7 +281,8 @@
     "STAGE_3_DISCOVERY": {
       "stage_id": "STAGE_3_DISCOVERY",
       "total_observed_transitions": 0,
-      "confidence_tier": "LOW_CONFIDENCE_INHERITED_PRIOR",
+      "status": "expert_prior_default",
+      "data_coverage": "no_real_examples_observed",
       "pairs": {
         "STAGE_0_BENIGN": {
           "observed_n": 0,
@@ -287,49 +324,51 @@
     "STAGE_4_C2_PERSISTENCE": {
       "stage_id": "STAGE_4_C2_PERSISTENCE",
       "total_observed_transitions": 332,
-      "confidence_tier": "HIGH_CONFIDENCE_CALIBRATED",
+      "status": "calibrated_empirical",
+      "data_coverage": "observed_in_ctu13",
       "pairs": {
         "STAGE_0_BENIGN": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_1_RECONNAISSANCE": {
           "observed_n": 27,
-          "probability": 0.0789,
+          "probability": 0.075301,
           "status": "calibrated"
         },
         "STAGE_2_INITIAL_ACCESS": {
           "observed_n": 30,
-          "probability": 0.0877,
+          "probability": 0.083668,
           "status": "calibrated"
         },
         "STAGE_3_DISCOVERY": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_4_C2_PERSISTENCE": {
           "observed_n": 274,
-          "probability": 0.807,
+          "probability": 0.778983,
           "status": "calibrated"
         },
         "STAGE_5_LATERAL_MOVEMENT": {
           "observed_n": 1,
-          "probability": 0.0146,
-          "status": "smoothed_with_prior"
+          "probability": 0.032419,
+          "status": "smoothed_prior_floor"
         },
         "STAGE_6_EXFILTRATION": {
           "observed_n": 0,
-          "probability": 0.0117,
-          "status": "smoothed_with_prior"
+          "probability": 0.02963,
+          "status": "smoothed_prior_floor"
         }
       }
     },
     "STAGE_5_LATERAL_MOVEMENT": {
       "stage_id": "STAGE_5_LATERAL_MOVEMENT",
       "total_observed_transitions": 2,
-      "confidence_tier": "LOW_CONFIDENCE_INHERITED_PRIOR",
+      "status": "expert_prior_default",
+      "data_coverage": "observed_in_ctu13",
       "pairs": {
         "STAGE_0_BENIGN": {
           "observed_n": 0,
@@ -371,88 +410,96 @@
     "STAGE_6_EXFILTRATION": {
       "stage_id": "STAGE_6_EXFILTRATION",
       "total_observed_transitions": 2445,
-      "confidence_tier": "HIGH_CONFIDENCE_CALIBRATED",
+      "status": "calibrated_empirical",
+      "data_coverage": "observed_in_ctu13",
       "pairs": {
         "STAGE_0_BENIGN": {
           "observed_n": 0,
-          "probability": 0.0002,
-          "status": "smoothed_with_prior"
+          "probability": 0.024479,
+          "status": "smoothed_prior_floor"
         },
         "STAGE_1_RECONNAISSANCE": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_2_INITIAL_ACCESS": {
           "observed_n": 1552,
-          "probability": 0.6322,
+          "probability": 0.575489,
           "status": "calibrated"
         },
         "STAGE_3_DISCOVERY": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_4_C2_PERSISTENCE": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_5_LATERAL_MOVEMENT": {
           "observed_n": 0,
           "probability": 0.0,
-          "status": "smoothed_with_prior"
+          "status": "smoothed_prior_floor"
         },
         "STAGE_6_EXFILTRATION": {
           "observed_n": 893,
-          "probability": 0.3676,
+          "probability": 0.400032,
           "status": "calibrated"
         }
       }
     }
   },
-  "dwell_provenance": {
+  "dwell_time_provenance": {
     "STAGE_0_BENIGN": {
       "duration_min": 0.0,
-      "empirical_mean_min": 0.2,
-      "sample_size": 22714,
-      "status": "expert_prior_default"
+      "empirical_mean_min": 24.93,
+      "sample_runs_n": 22714,
+      "status": "terminal_boundary_zero",
+      "data_coverage": "observed_in_ctu13"
     },
     "STAGE_1_RECONNAISSANCE": {
-      "duration_min": 8.3,
-      "empirical_mean_min": 6.6,
-      "sample_size": 65,
-      "status": "calibrated_empirical"
+      "duration_min": 8.4,
+      "empirical_mean_min": 8.4,
+      "sample_runs_n": 65,
+      "status": "calibrated_empirical",
+      "data_coverage": "observed_in_ctu13"
     },
     "STAGE_2_INITIAL_ACCESS": {
-      "duration_min": 15.0,
-      "empirical_mean_min": 0.2,
-      "sample_size": 1622,
-      "status": "expert_prior_default"
+      "duration_min": 15.3,
+      "empirical_mean_min": 15.3,
+      "sample_runs_n": 1622,
+      "status": "calibrated_empirical",
+      "data_coverage": "observed_in_ctu13"
     },
     "STAGE_3_DISCOVERY": {
       "duration_min": 12.0,
       "empirical_mean_min": null,
-      "sample_size": 0,
-      "status": "expert_prior_default"
+      "sample_runs_n": 0,
+      "status": "expert_prior_default",
+      "data_coverage": "no_real_examples_observed"
     },
     "STAGE_4_C2_PERSISTENCE": {
-      "duration_min": 13.2,
-      "empirical_mean_min": 8.4,
-      "sample_size": 60,
-      "status": "calibrated_empirical"
+      "duration_min": 19.7,
+      "empirical_mean_min": 19.7,
+      "sample_runs_n": 60,
+      "status": "calibrated_empirical",
+      "data_coverage": "observed_in_ctu13"
     },
     "STAGE_5_LATERAL_MOVEMENT": {
       "duration_min": 22.0,
-      "empirical_mean_min": 0.1,
-      "sample_size": 2,
-      "status": "expert_prior_default"
+      "empirical_mean_min": 2.75,
+      "sample_runs_n": 2,
+      "status": "expert_prior_default",
+      "data_coverage": "low_sample_support"
     },
     "STAGE_6_EXFILTRATION": {
       "duration_min": 0.0,
-      "empirical_mean_min": 0.1,
-      "sample_size": 1557,
-      "status": "expert_prior_default"
+      "empirical_mean_min": 15.76,
+      "sample_runs_n": 1557,
+      "status": "terminal_boundary_zero",
+      "data_coverage": "observed_in_ctu13"
     }
   }
 }

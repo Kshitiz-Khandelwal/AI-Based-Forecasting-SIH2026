@@ -38,6 +38,7 @@ interface ForecastHorizon {
   confidence: number;
   time_min: number;
   confidence_cone?: [number, number];
+  data_coverage?: string;
 }
 
 interface StageMeta {
@@ -46,6 +47,7 @@ interface StageMeta {
   severity?: string;
   color?: string;
   mitre_tactics?: string[];
+  data_coverage?: string;
 }
 
 interface ForecastData {
@@ -692,7 +694,7 @@ export default function ForecastPage() {
             <div className="bg-slate-950 rounded-lg p-3 font-mono text-[11px] text-sky-400 space-y-1 border border-slate-800">
               <div className="flex justify-between text-sky-300 font-bold border-b border-sky-900/50 pb-1">
                 <span>PROBE TELEMETRY</span>
-                <span>{typeof data.observed_qps === "number" ? `${data.observed_qps.toFixed(1)} QPS` : `${selectedHost ? (selectedHost.active_flows / 10).toFixed(1) : "0.0"} QPS`}</span>
+                <span>{typeof data.observed_qps === "number" ? `${data.observed_qps.toFixed(1)} QPS` : `${hosts.find(h => h.host_ip === selectedHost)?.active_flows ? ((hosts.find(h => h.host_ip === selectedHost)!.active_flows / 10).toFixed(1)) : "0.0"} QPS`}</span>
               </div>
               <div className="text-slate-200 font-bold">SIGNAL: {relayTripped ? "AIR-GAP ENGAGED (EMULATED)" : "ARMED / SECURE (EMULATED)"}</div>
               <div className="text-slate-400">THREAT: {threatScore} / 100</div>
@@ -794,6 +796,11 @@ export default function ForecastPage() {
                             {Math.round(forecastConf * 100)}% likely
                           </span>
                         )}
+                        {(stageKey === "STAGE_3_DISCOVERY" || meta.data_coverage === "no_real_examples_observed") && (
+                          <span className="text-[9px] bg-amber-50 text-amber-800 border border-amber-300 font-mono px-1.5 py-0.5 rounded font-semibold flex items-center gap-1" title="Zero real-world examples observed in CTU-13 dataset. Reverted to expert prior.">
+                            ⚠ untested on real traffic
+                          </span>
+                        )}
                       </div>
                       <p className="text-[10px] text-slate-400 mt-0.5 truncate">{meta.description}</p>
                       {meta.mitre_tactics && meta.mitre_tactics.length > 0 && (
@@ -838,8 +845,13 @@ export default function ForecastPage() {
               { h: data.forecast_60m, label: "+60 min", color: "red" },
             ] as const).map(({ h, label, color }) => (
               <div key={label} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <div className="text-[10px] font-mono font-bold text-slate-400 uppercase mb-2">{label} Horizon</div>
+                <div className="text-[10px] font-mono font-bold text-slate-400 uppercase mb-1">{label} Horizon</div>
                 <div className="text-xs font-bold text-slate-900 leading-tight mb-1">{h?.label || "—"}</div>
+                {(h?.stage === "STAGE_3_DISCOVERY" || h?.data_coverage === "no_real_examples_observed") && (
+                  <span className="text-[9px] bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded font-mono font-semibold inline-block mb-1">
+                    ⚠ untested on real traffic
+                  </span>
+                )}
                 {h?.confidence_cone ? (
                   <div className="mt-2">
                     <div className="relative h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -871,48 +883,98 @@ export default function ForecastPage() {
             ))}
           </div>
 
-          {/* AI Provenance & Methodology Transparency (Task 1 Requirement) */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 shadow-2xs">
-            <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+          {/* AI Provenance & Methodology Transparency (Fix 4: Dual Provenance Dimensions) */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
               <div className="flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5 text-blue-600" />
                 <span className="text-xs font-bold text-slate-800">AI Provenance &amp; Calibration Transparency</span>
               </div>
               <span className="text-[9px] font-mono font-bold bg-white text-slate-600 border border-slate-200 px-2 py-0.5 rounded">
-                HONEST METHODOLOGY
+                DUAL-PROVENANCE AUDIT
               </span>
             </div>
 
+            {/* Top 4 Architecture Tiles */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[10px]">
               <div className="bg-white p-2 rounded-lg border border-slate-200/80">
                 <span className="text-slate-400 block font-bold uppercase">Current Stage</span>
                 <span className="text-blue-700 font-extrabold block mt-0.5">Trained GRU</span>
-                <span className="text-slate-500 text-[9px] block">Neural inference (seq=10)</span>
+                <span className="text-slate-500 text-[9px] block">gru_inference (seq=10)</span>
               </div>
 
               <div className="bg-white p-2 rounded-lg border border-slate-200/80">
-                <span className="text-slate-400 block font-bold uppercase">Markov Horizons</span>
-                <span className="text-indigo-700 font-extrabold block mt-0.5">CTU-13 Calibrated</span>
-                <span className="text-slate-500 text-[9px] block">N=60,273 transitions</span>
+                <span className="text-slate-400 block font-bold uppercase">Transition Matrix</span>
+                <span className="text-indigo-700 font-extrabold block mt-0.5">Calibrated (N=60,273)</span>
+                <span className="text-slate-500 text-[9px] block">CTU-13 scaled alpha</span>
               </div>
 
               <div className="bg-white p-2 rounded-lg border border-slate-200/80">
-                <span className="text-slate-400 block font-bold uppercase">TTC Velocity</span>
-                <span className="text-amber-700 font-extrabold block mt-0.5">Empirical Priors</span>
-                <span className="text-slate-500 text-[9px] block">Blended dwell times</span>
+                <span className="text-slate-400 block font-bold uppercase">Dwell Time Engine</span>
+                <span className="text-amber-700 font-extrabold block mt-0.5">Option A Run Spans</span>
+                <span className="text-slate-500 text-[9px] block">Hybrid (3 data, 2 prior)</span>
               </div>
 
               <div className="bg-white p-2 rounded-lg border border-slate-200/80">
                 <span className="text-slate-400 block font-bold uppercase">Feature XAI</span>
                 <span className="text-emerald-700 font-extrabold block mt-0.5">Perturbation</span>
-                <span className="text-slate-500 text-[9px] block">Input sensitivity analysis</span>
+                <span className="text-slate-500 text-[9px] block">input_perturbation</span>
               </div>
             </div>
 
-            <p className="text-[10px] text-slate-500 mt-2.5 font-sans leading-tight">
+            {/* Stage-by-Stage Dual Provenance Breakdown Table */}
+            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden text-[10px] font-mono">
+              <div className="bg-slate-100 px-2.5 py-1.5 text-slate-600 font-bold border-b border-slate-200 grid grid-cols-12 gap-1 uppercase tracking-wider text-[9px]">
+                <span className="col-span-4">Kill-Chain Stage</span>
+                <span className="col-span-4">Transition Status</span>
+                <span className="col-span-4">Dwell Time Status</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {[
+                  { id: "STAGE_0_BENIGN", label: "0 Benign", tStat: "calibrated_empirical", tN: "52,715", dStat: "terminal_zero", dVal: "0.0m", dN: "22.7k runs" },
+                  { id: "STAGE_1_RECONNAISSANCE", label: "1 Recon", tStat: "calibrated_empirical", tN: "391", dStat: "calibrated_empirical", dVal: "8.4m", dN: "65 runs" },
+                  { id: "STAGE_2_INITIAL_ACCESS", label: "2 Access", tStat: "calibrated_empirical", tN: "4,388", dStat: "calibrated_empirical", dVal: "15.3m", dN: "1,622 runs" },
+                  { id: "STAGE_3_DISCOVERY", label: "3 Discovery", tStat: "expert_prior_default", tN: "0 (untested)", dStat: "expert_prior_default", dVal: "12.0m", dN: "0 runs", untested: true },
+                  { id: "STAGE_4_C2_PERSISTENCE", label: "4 C2 Beacon", tStat: "calibrated_empirical", tN: "332", dStat: "calibrated_empirical", dVal: "19.7m", dN: "60 runs" },
+                  { id: "STAGE_5_LATERAL_MOVEMENT", label: "5 Lateral", tStat: "expert_prior_default", tN: "2 (sparse)", dStat: "expert_prior_default", dVal: "22.0m", dN: "2 runs" },
+                  { id: "STAGE_6_EXFILTRATION", label: "6 Exfiltration", tStat: "calibrated_empirical", tN: "2,445", dStat: "terminal_zero", dVal: "0.0m", dN: "1,557 runs" },
+                ].map((row) => (
+                  <div key={row.id} className={cn("px-2.5 py-1.5 grid grid-cols-12 gap-1 items-center", row.untested && "bg-amber-50/50")}>
+                    <div className="col-span-4 font-semibold text-slate-800 flex items-center gap-1 truncate">
+                      <span>{row.label}</span>
+                      {row.untested && (
+                        <span className="text-[8px] bg-amber-100 text-amber-900 px-1 py-0.2 rounded shrink-0 font-bold">
+                          ⚠ N=0
+                        </span>
+                      )}
+                    </div>
+                    <div className="col-span-4 truncate">
+                      <span className={cn(
+                        "px-1.5 py-0.5 rounded text-[9px] font-semibold inline-block",
+                        row.tStat === "calibrated_empirical" ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "bg-slate-100 text-slate-600"
+                      )}>
+                        {row.tStat} (N={row.tN})
+                      </span>
+                    </div>
+                    <div className="col-span-4 truncate">
+                      <span className={cn(
+                        "px-1.5 py-0.5 rounded text-[9px] font-semibold inline-block",
+                        row.dStat === "calibrated_empirical" ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : row.dStat === "terminal_zero" ? "bg-slate-50 text-slate-500"
+                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                      )}>
+                        {row.dStat} ({row.dVal})
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-500 font-sans leading-tight">
               {data.provenance?.priors_source 
-                ? `Priors active: ${data.provenance.priors_source}. Calibrated transitions seed the Markov rollout from neural GRU state.`
-                : "Explicitly distinguishes trained PyTorch neural GRU inference from empirical Markov state transitions and published APT dwell-time priors."}
+                ? `Priors active: ${data.provenance.priors_source}. No single blended badge is used: Transition Matrix and Dwell Times have independent calibration status.`
+                : "Explicitly distinguishes trained PyTorch neural GRU inference from empirical Markov state transitions and contiguous run dwell-time priors."}
             </p>
           </div>
         </div>
