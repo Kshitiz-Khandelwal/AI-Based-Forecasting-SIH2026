@@ -205,10 +205,11 @@ export default function ForecastPage() {
     }
   }, []);
 
-  const fetchForecast = useCallback(async () => {
+  const fetchForecast = useCallback(async (hostToFetch?: string) => {
     try {
-      const url = selectedHost
-        ? `/api/v1/forecast/${selectedHost}`
+      const activeHost = hostToFetch || selectedHost;
+      const url = activeHost
+        ? `/api/v1/forecast/${activeHost}`
         : "/api/v1/forecast/timeline";
       const res = await fetch(url, { cache: "no-store" });
       if (res.ok) {
@@ -299,8 +300,8 @@ export default function ForecastPage() {
     setSimulating(true);
     setSimResult(null);
     let success = false;
+    const target = selectedHost || SIM_HOST;
     try {
-      const target = selectedHost || SIM_HOST;
       const res = await fetch(`/api/v1/flow/simulate/${target}`, { method: "POST" });
       if (res.ok) {
         const json = await res.json();
@@ -310,6 +311,7 @@ export default function ForecastPage() {
           message: stage,
           isFullSimulation: false,
         });
+        setSelectedHost(target);
         success = true;
       } else {
         const errJson = await res.json().catch(() => ({}));
@@ -326,7 +328,7 @@ export default function ForecastPage() {
     } finally {
       if (success) {
         await new Promise((r) => setTimeout(r, 400));
-        await Promise.all([fetchForecast(), fetchHosts()]);
+        await Promise.all([fetchForecast(target), fetchHosts()]);
       }
       setSimulating(false);
     }
@@ -345,6 +347,7 @@ export default function ForecastPage() {
     setSimulating(true);
     setSimResult(null);
     const target = selectedHost || SIM_HOST;
+    setSelectedHost(target);
     try {
       const res = await fetch(`/api/v1/flow/simulate/${target}/full`, { method: "POST" });
       if (!res.ok) {
@@ -365,20 +368,21 @@ export default function ForecastPage() {
           message: `${stage} (${i + 1}/6)`,
           isFullSimulation: true,
         });
+        setData((prev) => ({
+          ...prev,
+          current_stage: stage,
+          current_stage_confidence: 0.85 + (i * 0.02),
+          overall_threat_score: Math.min(98, 30 + (i * 14)),
+          time_to_compromise_min: Math.max(0, 60 - (i * 12)),
+        }));
         if (i < STAGE_ORDER.length - 1) {
-          setData((prev) => ({
-            ...prev,
-            current_stage: stage,
-            current_stage_confidence: 0.85 + (i * 0.02),
-            overall_threat_score: Math.min(95, 30 + (i * 12)),
-            time_to_compromise_min: Math.max(0, 60 - (i * 12)),
-          }));
           await new Promise((r) => setTimeout(r, 800));
         }
       }
 
       // Synchronize live forecasting engine on final stage completion
-      await Promise.all([fetchForecast(), fetchHosts()]);
+      await new Promise((r) => setTimeout(r, 400));
+      await Promise.all([fetchForecast(target), fetchHosts()]);
       setSimResult({
         status: "success",
         message: "ALL_STAGES (Stage 1 to 6)",

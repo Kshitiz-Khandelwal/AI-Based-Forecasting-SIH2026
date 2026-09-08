@@ -445,18 +445,32 @@ class AttackForecastingEngine:
         seq_tensor = torch.tensor(seq_arr, dtype=torch.float32, device=self.device).unsqueeze(0)
 
         # ---------------------------------------------------------------------
-        # Step 2: Trained PyTorch GRU Inference (or Fallback Heuristic)
         # ---------------------------------------------------------------------
+        # Step 2: Trained PyTorch GRU Inference + DPI/Indicator Behavioral Fusion
+        # ---------------------------------------------------------------------
+        heur_stage, heur_conf, heur_probs = self._heuristic_fallback(host_ip, flows, feats)
+
         if self.gru_model is not None and self.gru_loaded:
             self.gru_model.eval()
             with torch.no_grad():
                 logits = self.gru_model(seq_tensor)
-                probs = torch.softmax(logits, dim=-1).cpu().numpy()[0]
+                gru_probs = torch.softmax(logits, dim=-1).cpu().numpy()[0]
+
+            if heur_stage != "STAGE_0_BENIGN":
+                # High-fidelity behavioral telemetry (DGA seeds, C2 beacons, SMB sweeps, DNS exfil tags)
+                # provides vital ground-truth signals that NetFlow 5-tuple numeric representations alone cannot capture.
+                # Fuse the neural temporal dynamics with the behavioral indicator distribution.
+                fused_probs = 0.35 * gru_probs + 0.65 * heur_probs
+                # Suppress false benign probability when concrete attack telemetry is active
+                fused_probs[0] = min(fused_probs[0], 0.05)
+                probs = fused_probs / np.sum(fused_probs)
+            else:
+                probs = gru_probs
 
             pred_idx = int(np.argmax(probs))
             current_stage = STAGES[pred_idx]
             confidence = float(probs[pred_idx])
-            logger.info(f"[GRU Inference] Host {host_ip}: stage={current_stage} (confidence={confidence:.3f})")
+            logger.info(f"[GRU Inference + Fusion] Host {host_ip}: stage={current_stage} (confidence={confidence:.3f})")
 
             # Real feature attribution via sequence perturbation against the GRU model
             base_threat_prob = 1.0 - float(probs[0])
