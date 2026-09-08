@@ -172,9 +172,14 @@ export default function ForecastPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [serviceOffline, setServiceOffline] = useState(false);
+  const [flowIngestOffline, setFlowIngestOffline] = useState(false);
   const [relayTripped, setRelayTripped] = useState(false);
   const [simulating, setSimulating] = useState(false);
-  const [simStage, setSimStage] = useState<string | null>(null);
+  const [simResult, setSimResult] = useState<{
+    status: "success" | "error";
+    message: string;
+    isFullSimulation?: boolean;
+  } | null>(null);
   const [pcapUploading, setPcapUploading] = useState(false);
   const [pcapResult, setPcapResult] = useState<PcapResult | null>(null);
   const [pcapError, setPcapError] = useState<string | null>(null);
@@ -185,6 +190,20 @@ export default function ForecastPage() {
   const SIM_HOST = "172.28.0.101";
 
   // ─── Data Fetching ──────────────────────────────────────────────────────────
+
+  const checkFlowHealth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/flow/health", { cache: "no-store" });
+      if (res.ok) {
+        const json = await res.json();
+        setFlowIngestOffline(Boolean(json.error) || json.status === "offline");
+      } else {
+        setFlowIngestOffline(true);
+      }
+    } catch {
+      setFlowIngestOffline(true);
+    }
+  }, []);
 
   const fetchForecast = useCallback(async () => {
     try {
@@ -225,7 +244,7 @@ export default function ForecastPage() {
   async function handleManualRefresh() {
     setRefreshing(true);
     try {
-      await Promise.all([fetchForecast(), fetchHosts()]);
+      await Promise.all([fetchForecast(), fetchHosts(), checkFlowHealth()]);
     } finally {
       setTimeout(() => setRefreshing(false), 500);
     }
@@ -234,16 +253,18 @@ export default function ForecastPage() {
   useEffect(() => {
     fetchForecast();
     fetchHosts();
-  }, [fetchForecast, fetchHosts]);
+    checkFlowHealth();
+  }, [fetchForecast, fetchHosts, checkFlowHealth]);
 
   useEffect(() => {
     if (!isLive) return;
     const iv = setInterval(() => {
       fetchForecast();
       fetchHosts();
+      checkFlowHealth();
     }, 3000);
     return () => clearInterval(iv);
-  }, [fetchForecast, fetchHosts, isLive]);
+  }, [fetchForecast, fetchHosts, checkFlowHealth, isLive]);
 
   // ─── Actions ────────────────────────────────────────────────────────────────
 
@@ -274,61 +295,134 @@ export default function ForecastPage() {
   }
 
   async function handleSimulate() {
-    if (simulating) return;
+    if (simulating || flowIngestOffline) return;
     setSimulating(true);
-    setSimStage(null);
+    setSimResult(null);
+    let success = false;
     try {
       const target = selectedHost || SIM_HOST;
       const res = await fetch(`/api/v1/flow/simulate/${target}`, { method: "POST" });
       if (res.ok) {
         const json = await res.json();
-        setSimStage(json.simulated_stage || null);
+        const stage = json.simulated_stage || "STAGE_ADVANCED";
+        setSimResult({
+          status: "success",
+          message: stage,
+          isFullSimulation: false,
+        });
+        success = true;
       } else {
         const errJson = await res.json().catch(() => ({}));
-        setSimStage(`Simulation Error: ${errJson.message || res.statusText || "Service Unreachable"}`);
+        setSimResult({
+          status: "error",
+          message: errJson.message || `Could not reach flow-ingest service (port 8006) — is it running? (HTTP ${res.status})`,
+        });
       }
     } catch (err: any) {
-      setSimStage(`Simulation Failed: ${err.message || "Network Error"}`);
+      setSimResult({
+        status: "error",
+        message: `Could not reach flow-ingest service (port 8006) — is it running? (${err.message || "Network Error"})`,
+      });
     } finally {
-      await new Promise((r) => setTimeout(r, 400));
-      await Promise.all([fetchForecast(), fetchHosts()]);
+      if (success) {
+        await new Promise((r) => setTimeout(r, 400));
+        await Promise.all([fetchForecast(), fetchHosts()]);
+      }
       setSimulating(false);
     }
   }
 
+  // ─── Option A Implementation ───────────────────────────────────────────────
+  // OPTION A: Animated sequential stage progression for Full Kill-Chain.
+  // When executing full kill-chain, calling /flow/simulate/{host}/full injects
+  // all 6 stages of NetFlow packets into the collector. Because the GRU sliding
+  // window would otherwise instantly snap to the tail (Stage 6 Exfiltration),
+  // we animate client-side through each stage in STAGE_ORDER with ~800ms pauses,
+  // updating the UI state and then fetching the final live GRU forecast.
+  // This makes the kill-chain trajectory progression visually explicit to the operator.
   async function handleFullSimulate() {
+    if (simulating || flowIngestOffline) return;
     setSimulating(true);
-    setSimStage(null);
+    setSimResult(null);
+    const target = selectedHost || SIM_HOST;
     try {
-      const target = selectedHost || SIM_HOST;
       const res = await fetch(`/api/v1/flow/simulate/${target}/full`, { method: "POST" });
-      if (res.ok) {
-        setSimStage("ALL_STAGES (Stage 1 to 6)");
-      } else {
+      if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        setSimStage(`Full Simulation Error: ${errJson.message || res.statusText || "Service Unreachable"}`);
+        setSimResult({
+          status: "error",
+          message: errJson.message || `Could not reach flow-ingest service (port 8006) — is it running? (HTTP ${res.status})`,
+        });
+        setSimulating(false);
+        return;
       }
-    } catch (err: any) {
-      setSimStage(`Full Simulation Failed: ${err.message || "Network Error"}`);
-    } finally {
-      await new Promise((r) => setTimeout(r, 600));
+
+      // Step-by-step paced playback through stages so the progression is visible
+      for (let i = 0; i < STAGE_ORDER.length; i++) {
+        const stage = STAGE_ORDER[i];
+        setSimResult({
+          status: "success",
+          message: `${stage} (${i + 1}/6)`,
+          isFullSimulation: true,
+        });
+        if (i < STAGE_ORDER.length - 1) {
+          setData((prev) => ({
+            ...prev,
+            current_stage: stage,
+            current_stage_confidence: 0.85 + (i * 0.02),
+            overall_threat_score: Math.min(95, 30 + (i * 12)),
+            time_to_compromise_min: Math.max(0, 60 - (i * 12)),
+          }));
+          await new Promise((r) => setTimeout(r, 800));
+        }
+      }
+
+      // Synchronize live forecasting engine on final stage completion
       await Promise.all([fetchForecast(), fetchHosts()]);
+      setSimResult({
+        status: "success",
+        message: "ALL_STAGES (Stage 1 to 6)",
+        isFullSimulation: true,
+      });
+    } catch (err: any) {
+      setSimResult({
+        status: "error",
+        message: `Could not reach flow-ingest service (port 8006) — is it running? (${err.message || "Network Error"})`,
+      });
+    } finally {
       setSimulating(false);
     }
   }
 
   async function handleResetSimulation() {
+    if (flowIngestOffline) return;
     const target = selectedHost || SIM_HOST;
+    let success = false;
     try {
       const res = await fetch(`/api/v1/flow/hosts/${target}`, { method: "DELETE" });
       if (res.ok) {
-        setSimStage("RESET_TO_BENIGN");
+        setSimResult({
+          status: "success",
+          message: "RESET_TO_BENIGN",
+          isFullSimulation: false,
+        });
+        success = true;
       } else {
-        setSimStage("Reset failed (Host unreachable)");
+        const errJson = await res.json().catch(() => ({}));
+        setSimResult({
+          status: "error",
+          message: errJson.message || `Reset failed (HTTP ${res.status}) — host unreachable`,
+        });
       }
-      await Promise.all([fetchForecast(), fetchHosts()]);
     } catch (err: any) {
-      setSimStage(`Reset Failed: ${err.message || "Network Error"}`);
+      setSimResult({
+        status: "error",
+        message: `Reset failed: Could not reach flow-ingest service (port 8006) — ${err.message || "Network Error"}`,
+      });
+    } finally {
+      if (success) {
+        await Promise.all([fetchForecast(), fetchHosts()]);
+      }
     }
   }
 
@@ -426,8 +520,9 @@ export default function ForecastPage() {
           {/* Reset simulation */}
           <button
             onClick={handleResetSimulation}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-all shadow-2xs active:scale-95"
-            title="Reset simulation back to clean baseline"
+            disabled={simulating || flowIngestOffline}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-all shadow-2xs active:scale-95"
+            title={flowIngestOffline ? "flow-ingest service offline (port 8006)" : "Reset simulation back to clean baseline"}
           >
             <RotateCcw className="w-3 h-3" />
             Reset State
@@ -436,8 +531,9 @@ export default function ForecastPage() {
           {/* Step simulate */}
           <button
             onClick={handleSimulate}
-            disabled={simulating}
-            className="flex items-center gap-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50 active:scale-95"
+            disabled={simulating || flowIngestOffline}
+            className="flex items-center gap-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg shadow-sm transition-all active:scale-95"
+            title={flowIngestOffline ? "flow-ingest service offline (port 8006)" : "Advance simulation by one kill-chain stage"}
           >
             <Play className="w-3 h-3 fill-current" />
             {simulating ? "Advancing…" : "Simulate Next Stage"}
@@ -446,8 +542,9 @@ export default function ForecastPage() {
           {/* Full APT */}
           <button
             onClick={handleFullSimulate}
-            disabled={simulating}
-            className="flex items-center gap-2 px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50 active:scale-95"
+            disabled={simulating || flowIngestOffline}
+            className="flex items-center gap-2 px-3.5 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg shadow-sm transition-all active:scale-95"
+            title={flowIngestOffline ? "flow-ingest service offline (port 8006)" : "Run complete 6-stage kill-chain simulation"}
           >
             <Crosshair className="w-3 h-3" />
             Full Kill-Chain
@@ -455,7 +552,7 @@ export default function ForecastPage() {
         </div>
       </div>
 
-      {/* ── Degraded State Warning (Honest UX) ─────────────────────────────────── */}
+      {/* ── Degraded State Warnings (Honest UX) ─────────────────────────────────── */}
       {serviceOffline && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-center justify-between gap-4 text-amber-900 shadow-sm">
           <div className="flex items-center gap-3">
@@ -476,15 +573,69 @@ export default function ForecastPage() {
         </div>
       )}
 
+      {flowIngestOffline && (
+        <div className="bg-red-50 border border-red-300 rounded-xl p-4 flex items-center justify-between gap-4 text-red-900 shadow-sm">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+            <div>
+              <div className="font-bold text-sm">Flow Ingestion Service Offline (Port 8006)</div>
+              <div className="text-xs text-red-700 mt-0.5">
+                Could not connect to <span className="font-mono">flow-ingest</span> service on port 8006. Attack flow simulation and PCAP ingestion are currently disabled. Ensure the service is active with <code className="bg-red-100 px-1 py-0.5 rounded font-mono text-[11px]">python run_backend.py</code>.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={checkFlowHealth}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg shrink-0 transition-colors"
+          >
+            Retry Flow Ingest
+          </button>
+        </div>
+      )}
+
       {/* ── Sim Notification ─────────────────────────────────────────────────── */}
-      {simStage && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3 text-sm">
-          <Activity className="w-4 h-4 text-blue-600 shrink-0" />
-          <span className="text-blue-900 font-semibold">
-            Injected: <span className="font-mono">{simStage}</span>
-          </span>
-          <span className="text-blue-600 text-xs">{simStage === "ALL_STAGES" ? "All 6 kill-chain stages loaded" : "Flow telemetry ingested — forecasting updated"}</span>
-          <button onClick={() => setSimStage(null)} className="ml-auto text-blue-400 hover:text-blue-700 text-xs">✕</button>
+      {simResult && (
+        <div
+          className={cn(
+            "rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all shadow-xs",
+            simResult.status === "success"
+              ? "bg-blue-50 border border-blue-200 text-blue-900"
+              : "bg-red-50 border border-red-300 text-red-900"
+          )}
+        >
+          {simResult.status === "success" ? (
+            <Activity className="w-4 h-4 text-blue-600 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+          )}
+          <div className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-semibold">
+              {simResult.status === "success" ? (
+                <>Injected: <span className="font-mono">{simResult.message}</span></>
+              ) : (
+                <span className="font-medium">{simResult.message}</span>
+              )}
+            </span>
+            {simResult.status === "success" && (
+              <span className="text-blue-600 text-xs">
+                {simResult.isFullSimulation || simResult.message === "ALL_STAGES (Stage 1 to 6)"
+                  ? "All 6 kill-chain stages sequenced — forecasting synchronized"
+                  : "Flow telemetry ingested — forecasting updated"}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => setSimResult(null)}
+            className={cn(
+              "ml-auto text-xs px-2 py-0.5 rounded transition-colors font-bold",
+              simResult.status === "success"
+                ? "text-blue-400 hover:text-blue-700 hover:bg-blue-100"
+                : "text-red-400 hover:text-red-700 hover:bg-red-100"
+            )}
+            aria-label="Dismiss notification"
+          >
+            ✕
+          </button>
         </div>
       )}
 
