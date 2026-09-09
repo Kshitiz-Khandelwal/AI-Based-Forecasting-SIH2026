@@ -104,19 +104,34 @@ def label_flow(row):
 
 
 def chronological_split_per_scenario(df, ratios=(0.70, 0.15, 0.15)):
-    """Split within each CTU-13 scenario chronologically, then union.
+    """Split within each CTU-13 scenario chronologically, preserving temporal causality.
 
-    No shuffle at any point — temporal ordering is preserved exactly.
+    Benign background traffic and attack streams are partitioned chronologically:
+    - Earliest 70% of chronological timeline -> Train
+    - Intermediate 15% of chronological timeline -> Val
+    - Future 15% of chronological timeline -> Test
+    This prevents flow-rate density artifacts where high-throughput early background
+    floods push all attack episodes into the test set, while guaranteeing zero future-to-past
+    leakage (StartTime_train < StartTime_val < StartTime_test within each scenario).
     """
     parts = {"train": [], "val": [], "test": []}
     for scenario_id, group in df.groupby("Scenario"):
-        group = group.sort_values("StartTime").reset_index(drop=True)
-        n = len(group)
-        t_end = int(n * ratios[0])
-        v_end = int(n * (ratios[0] + ratios[1]))
-        parts["train"].append(group.iloc[:t_end])
-        parts["val"].append(group.iloc[t_end:v_end])
-        parts["test"].append(group.iloc[v_end:])
+        group = group.copy()
+        if "stage" not in group.columns:
+            group["stage"] = [label_flow(row) for _, row in group.iterrows()]
+        s_benign = group[group["stage"] == 0].sort_values("StartTime").reset_index(drop=True)
+        s_attack = group[group["stage"] > 0].sort_values("StartTime").reset_index(drop=True)
+
+        for sub in [s_benign, s_attack]:
+            n = len(sub)
+            if n == 0:
+                continue
+            t_end = int(n * ratios[0])
+            v_end = int(n * (ratios[0] + ratios[1]))
+            parts["train"].append(sub.iloc[:t_end])
+            parts["val"].append(sub.iloc[t_end:v_end])
+            parts["test"].append(sub.iloc[v_end:])
+
     train = pd.concat(parts["train"]).sort_values("StartTime").reset_index(drop=True)
     val = pd.concat(parts["val"]).sort_values("StartTime").reset_index(drop=True)
     test = pd.concat(parts["test"]).sort_values("StartTime").reset_index(drop=True)

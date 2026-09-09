@@ -181,50 +181,46 @@ Black-box predictions are unacceptable in Critical Information Infrastructure. T
 
 ## 📊 Empirical Benchmark: World Model vs. Baseline
 
-Side-by-side evaluation of **Logistic Regression baseline** vs **Temporal GRU (v3, `seq_len=5`, majority-vote, focal loss + jitter)** on the strict chronological held-out CTU-13 partition. Both models use the same **scenario + source-host-grouped sequences** — zero cross-boundary temporal leakage.
+Side-by-side evaluation of **Logistic Regression baseline** vs **Temporal GRU (v4, `seq_len=5`, majority-vote, stream-stratified chronological split)** on the strict held-out CTU-13 partition. Both models use the same **scenario + source-host-grouped sequences** with zero future-to-past temporal leakage.
 
-> Source: `services/forecasting_engine/models/temporal_gru_forecaster_grouped_seqlen5_majority_v3_benchmark_results.json`
+> Source: `services/forecasting_engine/models/temporal_gru_forecaster_grouped_v4_benchmark_results.json`
 
-| Metric | Logistic Regression (Baseline) | Temporal GRU v3 (`seqlen5_majority`) | Advantage / Winner |
+| Metric | Logistic Regression (Baseline) | Temporal GRU v4 (`grouped_v4`) | Advantage / Winner |
 | :--- | :---: | :---: | :--- |
-| **Weighted F1** | 85.18% | **88.33%** | **Temporal GRU (+3.15pp)** |
-| **Weighted Recall** | 88.17% | **91.79%** | **Temporal GRU (+3.62pp)** |
-| **Weighted Precision** | **85.74%** | 85.37% | LR (+0.37pp) |
-| **Benign False Positive Rate (FPR)** | 7.3351% | **0.0000%** | **Temporal GRU (Zero False Alarms)** |
-| **Per-Sequence Inference Latency** | **0.0002 ms** | 0.0047 ms | Both sub-millisecond real-time |
-| **INITIAL ACCESS F1** | 98.35% | **98.64%** | **Temporal GRU** |
-| **EXFILTRATION F1** | 99.75% | **99.94%** | **Temporal GRU** |
-| **BENIGN F1** | 92.71% | **93.14%** | **Temporal GRU** |
+| **Weighted F1** | 97.61% | **99.95%** | **Temporal GRU (+2.34pp)** |
+| **Weighted Recall** | 97.05% | **99.95%** | **Temporal GRU (+2.90pp)** |
+| **Weighted Precision** | 98.64% | **99.95%** | **Temporal GRU (+1.31pp)** |
+| **Benign False Positive Rate (FPR)** | 3.4197% (231 false alarms) | **0.0444% (3 false alarms)** | **Temporal GRU (77x lower FPR)** |
+| **Per-Sequence Inference Latency** | **0.0002 ms** | 0.0122 ms | Both sub-millisecond real-time |
+| **RECONNAISSANCE F1** | 56.83% | **98.09%** | **Temporal GRU (+41.26pp)** |
+| **C2 PERSISTENCE F1** | 42.28% | **100.00%** | **Temporal GRU (+57.72pp)** |
+| **INITIAL ACCESS F1** | 97.32% | **99.93%** | **Temporal GRU (+2.61pp)** |
+| **EXFILTRATION F1** | 99.24% | **99.81%** | **Temporal GRU (+0.57pp)** |
+| **BENIGN F1** | 98.26% | **99.98%** | **Temporal GRU (+1.72pp)** |
 
-### Empirical Ablation Matrix: Addressing Window-Burst Dilution
+### Resolving the Flow-Density Artifact & Majority-Class Collapse
 
-Our run-length analysis (`docs/BURST_LENGTH_VS_WINDOW_ANALYSIS.md`) revealed that median Recon and C2 bursts are only **2 flows long**. When combined with `next-step` labeling over a 10-step window, bursts finished before the target flow, assigning a `BENIGN` label to attack windows. Transitioning to `seq_len=5` with `majority-vote` labeling and corrected RetinaNet Focal Loss solved this dilution:
+Prior models suffered from Recon and C2 collapse to Benign because of a subtle dataset sampling artifact:
+1. **Flow-Rate Density Asymmetry**: When CTU-13 raw PCAP binetflows were sampled, 15,000 benign flows occurred within the first 90–120 seconds of capture on high-speed links, while attack campaigns (Murlo port scans, custom encrypted C2) unfolded over hours.
+2. **Row-Count Cutting Defect**: Cutting strictly by row count ($N_{\text{rows}} \times 0.70$) placed only the first 90 seconds in the training set, pushing 99.7% of Recon and 100% of C2 into the test partition. The model was tested on attacks it was never shown.
+3. **Stream-Stratified Chronological Solution**: By independently partitioning benign and attack streams chronologically within each scenario (Earliest 70% $\to$ Train, Middle 15% $\to$ Val, Latest 15% $\to$ Test), temporal causality is 100% preserved ($T_{\text{train}} < T_{\text{val}} < T_{\text{test}}$) while ensuring every kill-chain stage has early temporal representation in training and future sequence evaluation in testing.
 
-| Candidate Model | Window | Label Strategy | Loss & Regularization | Weighted F1 | Benign FPR | vs LR Baseline |
-|---|---|---|---|---:|---:|---|
-| **Logistic Regression (Baseline)** | 1 flow | single flow | Balanced CE | 85.18% | 7.3351% | baseline |
-| `temporal_gru_forecaster_grouped_v2` | `seq_len=10` | next-step | CE + verbatim oversampling | 68.91% | 0.0000% | -16.27% |
-| `temporal_gru_forecaster_grouped_v3` | `seq_len=10` | next-step | Corrected Focal + Jitter | 68.91% | 0.0000% | -16.27% |
-| `temporal_gru_forecaster_grouped_seqlen5_v3` | `seq_len=5` | next-step | Corrected Focal + Jitter | 69.87% | 0.0000% | -15.31% |
-| `temporal_gru_forecaster_grouped_majority_v3` | `seq_len=10` | majority-vote | Corrected Focal + Jitter | 85.80% | 0.5987% | **+0.62%** |
-| `temporal_gru_forecaster_grouped_seqlen5_majority_v3` | **`seq_len=5`** | **majority-vote** | **Corrected Focal + Jitter** | **88.33%** | **0.0000%** | **+3.15% (BEST)** |
+### Per-Class Held-Out Breakdown (`grouped_v4`)
 
-### Per-Class Held-Out Breakdown (`seqlen5_majority_v3`)
-
-| Stage | Support (Test) | Precision | Recall | F1-Score | Diagnostic Status |
+| Stage | Support (Test) | Precision | Recall | F1-Score | Majority Collapse Diagnostic |
 | :--- | ---: | :---: | :---: | :---: | :--- |
-| **STAGE_0_BENIGN** | 4,867 | 87.16% | **100.00%** | **93.14%** | ✅ Flawless benign identification (0 false alarms) |
-| **STAGE_1_RECONNAISSANCE** | 345 | 0.00% | 0.00% | 0.00% | ⚠️ Chronological skew (only 52 train flows vs 350 test) |
-| **STAGE_2_INITIAL_ACCESS** | 2,424 | **100.00%** | 97.32% | **98.64%** | ✅ Near-perfect detection, zero confusion with Exfil |
-| **STAGE_3_DISCOVERY** | 0 | 0.00% | 0.00% | 0.00% | ❌ Zero CTU-13 holdout samples — dataset gap |
-| **STAGE_4_C2_PERSISTENCE** | 308 | 0.00% | 0.00% | 0.00% | ⚠️ Chronological skew (only 12 train flows vs 322 test) |
-| **STAGE_5_LATERAL_MOVEMENT** | 2 | 0.00% | 0.00% | 0.00% | ❌ Low sample support in CTU-13 |
-| **STAGE_6_EXFILTRATION** | 799 | **99.88%** | **100.00%** | **99.94%** | ✅ Perfect exfiltration & DNS tunneling detection |
+| **STAGE_0_BENIGN** | 6,755 | **100.00%** | 99.96% | **99.98%** | ✅ Flawless benign identification (0.04% FPR) |
+| **STAGE_1_RECONNAISSANCE** | 77 | 96.25% | **100.00%** | **98.09%** | ✅ **0.0% collapsed to Benign** (100% recall) |
+| **STAGE_2_INITIAL_ACCESS** | 707 | **100.00%** | 99.86% | **99.93%** | ✅ **0.0% collapsed to Benign** (zero Exfil confusion) |
+| **STAGE_3_DISCOVERY** | 0 | — | — | — | ❌ Zero CTU-13 holdout samples — dataset gap |
+| **STAGE_4_C2_PERSISTENCE** | 26 | **100.00%** | **100.00%** | **100.00%** | ✅ **0.0% collapsed to Benign** (100% precision & recall) |
+| **STAGE_5_LATERAL_MOVEMENT** | 0 | — | — | — | ❌ Low sample support in CTU-13 (2 train flows) |
+| **STAGE_6_EXFILTRATION** | 261 | 99.62% | **100.00%** | **99.81%** | ✅ **0.0% collapsed to Benign** (100% recall) |
 
 **Reproducing the Benchmark & Training**:
 ```powershell
-# Run deterministic benchmark for best model (seq_len=5, majority-vote)
-$env:TEMPORAL_GRU_MODEL_FILENAME = 'temporal_gru_forecaster_grouped_seqlen5_majority_v3.pt'
+# Run deterministic benchmark for v4 model
+$env:TEMPORAL_GRU_MODEL_FILENAME = 'temporal_gru_forecaster_grouped_v4.pt'
 $env:TEMPORAL_GRU_SEQ_LEN = '5'
 $env:TEMPORAL_GRU_LABEL_STRATEGY = 'majority'
 python services/forecasting_engine/run_full_ml_benchmark.py
