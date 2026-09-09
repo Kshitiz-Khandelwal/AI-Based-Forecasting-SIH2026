@@ -222,46 +222,20 @@ def run_continuous_red_team():
         print(f"\n\n{C.GREEN}✔ Red-team stream stopped. Total {count} queries processed and rendered on dashboard.{C.RESET}\n")
 
 def run_multistage_forecasting():
-    print(f"\n{C.BOLD}{C.MAGENTA}🔮 Multi-Stage APT Kill-Chain Forecasting & Zephyr Sentinel Simulation{C.RESET}")
-    print(f"{C.CYAN}Simulating sequential 6-stage MITRE ATT&CK progression over sliding timeline...{C.RESET}\n")
-    
-    stages = [
-        ("STAGE_1_RECONNAISSANCE", "172.28.0.101", "port-probe.target-corp.org", "Port Sweep & Subnet Enumeration", 1.5, "PULSE_YELLOW"),
-        ("STAGE_2_INITIAL_ACCESS", "172.28.0.101", "xq9m2kz7v4naplq.top", "DGA Seed Contact & Phish Drop", 2.0, "PULSE_YELLOW"),
-        ("STAGE_3_DISCOVERY", "172.28.0.101", "internal-ldap-enum.local", "Active Directory & Host Profiling", 2.0, "PULSE_AMBER"),
-        ("STAGE_4_C2_PERSISTENCE", "172.28.0.101", "c2-beacon.dark-infra.cc", "Periodic Cobalt Strike C2 Heartbeat", 2.5, "PULSE_AMBER"),
-        ("STAGE_5_LATERAL_MOVEMENT", "172.28.0.101", "smb-exec-192-168-1-50.local", "Lateral Pivot -> Crown Jewel DB", 2.5, "FLASH_RED"),
-        ("STAGE_6_EXFILTRATION", "172.28.0.101", "YWJjZDEyMzQ1Ng==.attacker-c2.net", "Base64 DNS Tunneling Data Exfiltration", 3.0, "FLASH_RED")
-    ]
-    
-    for idx, (stage_id, ip, domain, desc, sleep_t, rgb_mode) in enumerate(stages, 1):
-        print(f"{C.BOLD}[STEP {idx}/6] {stage_id}{C.RESET}")
-        print(f"  Target Host:  {ip}")
-        print(f"  Traffic Sign: {domain} ({desc})")
-        
-        res, latency, endpoint, status = send_query(domain, ip)
-        verdict = res.get("verdict", "ALLOW")
-        score = res.get("risk_score", res.get("domain_risk", 0))
-        
-        # Trigger forecasting progression
-        if idx <= 2:
-            forecast_horizon = "+30 min (Initial Access)"
-        elif idx <= 4:
-            forecast_horizon = "+15 min (C2 / Exfiltration Risk 87%)"
-        else:
-            forecast_horizon = "+5 min (CRITICAL: EXFIL DETECTED)"
-            
-        print(f"  Detection:    {verdict} (Score: {score}/100 | {latency:.1f}ms)")
-        print(f"  AI Forecast:  {C.YELLOW}{forecast_horizon}{C.RESET}")
-        print(f"  Zephyr RTOS:  RGB -> {rgb_mode} | OLED -> Stage {idx}/6 Updated")
-        
-        if idx == 5 or idx == 6:
-            print(f"  {C.BG_RED}{C.WHITE}🚨 ZEPHYR RTOS PHYSICAL AIR-GAP RELAY TRIPPED (ISOLATED HOST 172.28.0.101){C.RESET}")
-            
-        print("-" * 65)
-        time.sleep(sleep_t)
-        
-    print(f"\n{C.GREEN}✔ Multi-Stage APT Attack Simulation Complete! Live telemetry rendered in public/forecast.html.{C.RESET}\n")
+    try:
+        import simulate_network_attack_forecasting as sim_fc
+        print(f"\n{C.BOLD}{C.MAGENTA}🔮 Launching Live APT Network Attack Forecasting & Kill-Chain Engine...{C.RESET}")
+        print(f"{C.CYAN}Connecting to Flow Ingest (:8006), Bi-GRU Forecaster (:8007), and Web Console (:3000)...{C.RESET}\n")
+        sim_fc.check_services_health()
+        print(f"{C.BOLD}Select Execution Mode:{C.RESET}")
+        print(f"  {C.CYAN}1{C.RESET}) ⚡ Automated Timed Pacing (Smooth 6-Stage Demo)")
+        print(f"  {C.YELLOW}2{C.RESET}) 🎓 SIH Judges Step-by-Step (Press ENTER for each stage)")
+        mode = input(f"{C.BOLD}Enter mode [1-2, default 1]: {C.RESET}").strip() or "1"
+        is_interactive = (mode == "2")
+        sim_fc.run_campaign_simulation("1", interactive=is_interactive)
+    except Exception as err:
+        print(f"{C.RED}Error running live forecasting simulation: {err}{C.RESET}")
+
 
 def run_custom_domain():
     print(f"\n{C.BOLD}{C.CYAN}🎯 Custom Domain Live Model Evaluator{C.RESET}")
