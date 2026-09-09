@@ -72,7 +72,7 @@ export async function GET() {
       modelArtifact,
       split: report.split,
       sequenceGrouping: report.sequence_grouping,
-      deploymentStatus: "Experimental — not deployed",
+      deploymentStatus: "Active Tier 3 Cascade Forecaster",
       status: report.status ?? "certified_leak_free",
       metrics: report.evaluation,
       baselineComparison,
