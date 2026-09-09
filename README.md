@@ -181,34 +181,49 @@ Black-box predictions are unacceptable in Critical Information Infrastructure. T
 
 ## 📊 Empirical Benchmark: World Model vs. Baseline
 
-Evaluation of the **Temporal GRU (v2, grouped-sequence)** on the CTU-13 holdout using **scenario and source-host isolated windows** to prevent boundary leakage. Prior window-flattened results are invalidated and excluded.
+Side-by-side evaluation of **Logistic Regression baseline** vs **Temporal GRU (v2, grouped-sequence)** on the CTU-13 holdout. Both models use the same **scenario + source-host-grouped windows** — no boundary mixing.
 
-> ⚠️ **Logistic Regression baseline is pending a corrected grouped rerun.** The table below reports GRU-only verified numbers. A head-to-head comparison will be added after the baseline is rerun with the same grouped builder.
+> Source: `services/forecasting_engine/models/temporal_gru_forecaster_grouped_v2_benchmark_results.json`
 
-| Evaluation Metric | Temporal GRU (v2, grouped · CTU-13) | Status |
-| :--- | :---: | :--- |
-| **Weighted F1** | **66.61%** | ✅ Verified — persisted grouped holdout |
-| **Weighted Precision** | 66.23% | ✅ Verified |
-| **Weighted Recall** | 70.05% | ✅ Verified |
-| **Benign FPR** | **2.33%** | ✅ Verified |
+| Metric | Logistic Regression (Baseline) | Temporal GRU v2 (grouped) | Winner |
+| :--- | :---: | :---: | :--- |
+| **Weighted F1** | 71.54% | 66.61% | LR (−4.93pp) |
+| **Weighted Precision** | 70.37% | 66.23% | LR |
+| **Weighted Recall** | 75.00% | 70.05% | LR |
+| **Benign FPR** | **1.22%** | 2.33% | LR (halved FPR) |
+| **RECON F1** | 19.58% | **0.00%** | LR clearly |
+| **INITIAL ACCESS F1** | 66.03% | 42.76% | LR clearly |
+| **C2 PERSISTENCE F1** | **0.00%** | **0.00%** | Tied (both fail) |
+| **EXFILTRATION F1** | 32.41% | **46.74%** | GRU |
+| **GRU ECE (pre-calibration)** | — | 0.1125 | — |
 
-**Per-class breakdown** (same grouped CTU-13 holdout, `temporal_gru_forecaster_grouped_v2_evaluation.json`):
+**Interpretation:** The GRU outperforms LR on Exfiltration, but LR is strictly better on Reconnaissance, Initial Access, and aggregate F1 on this CTU-13 baseline. This is a known correctness-first result — the grouped-sequence fix invalidated prior results and exposed real weaknesses. **Neither model should be promoted as the primary evidence for PS #26153 performance until minority-stage collapse is addressed.**
 
-| Stage | F1 | Holdout Samples | Reliability |
-| :--- | :---: | ---: | :--- |
-| STAGE_0_BENIGN | 91.82% | 4,510 | ✅ Sufficient |
-| STAGE_1_RECONNAISSANCE | 0.00% | 325 | ⚠️ Feature collapse — zero precision (see caveats) |
-| STAGE_2_INITIAL_ACCESS | 42.76% | 2,021 | ✅ Sufficient |
-| STAGE_3_DISCOVERY | 0.00% | 0 | ❌ No holdout samples in CTU-13 |
-| STAGE_4_C2_PERSISTENCE | 0.00% | 315 | ⚠️ Feature collapse — zero precision (see caveats) |
-| STAGE_5_LATERAL_MOVEMENT | 0.00% | 2 | ❌ Low sample — metric not reliable |
-| STAGE_6_EXFILTRATION | 46.74% | 1,143 | ✅ Sufficient |
+**Per-class breakdown** (GRU v2 · grouped CTU-13 holdout):
 
-**Caveats (required transparency per Project Context rules):**
-- This is the **v2 experimental candidate** — not the deployed v1 model.
-- Recon/C2/Lateral stages show zero precision: the model assigns no probability mass to those minority stages in the holdout. This is a known imbalance problem; oversampling and focal loss experiments are queued.
-- Discovery has zero holdout samples in CTU-13; this is a dataset coverage gap, not a model failure.
-- Reproduction: `python services/forecasting_engine/run_full_ml_benchmark.py` (requires CTU-13 at `data/ctu13_multistage_flows.csv`).
+| Stage | GRU F1 | LR F1 | Samples | Confusion Matrix Finding |
+| :--- | :---: | :---: | ---: | :--- |
+| STAGE_0_BENIGN | 91.82% | 92.71% | 4,510 | ✅ Both models perform well |
+| STAGE_1_RECONNAISSANCE | 0.00% | 19.58% | 325 | ⚠️ GRU: 303/325 collapse to BENIGN |
+| STAGE_2_INITIAL_ACCESS | 42.76% | 66.03% | 2,021 | ⚠️ GRU splits predictions with EXFIL |
+| STAGE_3_DISCOVERY | 0.00% | 0.00% | 0 | ❌ Zero CTU-13 holdout samples — dataset gap |
+| STAGE_4_C2_PERSISTENCE | 0.00% | 0.00% | 315 | ⚠️ GRU: all 315 collapse to BENIGN |
+| STAGE_5_LATERAL_MOVEMENT | 0.00% | 0.00% | 2 | ❌ Low sample — not reliable for either model |
+| STAGE_6_EXFILTRATION | **46.74%** | 32.41% | 1,143 | ✅ GRU advantage is real and large |
+
+**Root cause of RECON/C2 collapse (identified via confusion matrix):**  
+The v2 model was trained with verbatim-copy oversampling: 10–15 byte-identical duplicates of each minority window. The model memorised those exact sequences but failed to generalize — RECON predictions collapse 93% into BENIGN, C2 predictions collapse 100% into BENIGN. **Fix applied in `train_temporal_gru.py`**: Gaussian-jittered augmentation (5% per-feature std noise) replaces verbatim copying, combined with focal loss (γ=2.0, Lin et al. 2017) to suppress easy-BENIGN gradient dominance throughout training. The next named candidate (`temporal_gru_forecaster_grouped_v3.pt`) will be trained and evaluated with these fixes.
+
+**Reproduction:**  
+```powershell
+# Reproduce v2 benchmark (grouped, no oversampling fix)
+python services/forecasting_engine/run_full_ml_benchmark.py
+
+# Train v3 with focal loss + jitter fix
+$env:TEMPORAL_GRU_MODEL_FILENAME = 'temporal_gru_forecaster_grouped_v3.pt'
+python services/forecasting_engine/train_temporal_gru.py
+Remove-Item Env:TEMPORAL_GRU_MODEL_FILENAME
+```
 
 
 ---

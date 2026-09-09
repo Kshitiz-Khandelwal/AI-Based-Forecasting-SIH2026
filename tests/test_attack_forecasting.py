@@ -14,7 +14,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from services.flow_ingest.network_flow_collector import NetworkFlowCollector, FlowRecord
 from services.forecasting_engine.attack_forecaster import AttackForecastingEngine, STAGES
-from services.forecasting_engine.train_temporal_gru import TemporalSequenceDataset
+from services.forecasting_engine.train_temporal_gru import TemporalSequenceDataset, SEED
+import numpy as np
+import torch
+import torch.nn as nn
 
 
 class TestAttackForecasting(unittest.TestCase):
@@ -150,6 +153,95 @@ class TestAttackForecasting(unittest.TestCase):
             "Feature attributions must dynamically change based on input flow features"
         )
         self.assertFalse(all(w in [0.32, 0.41, 0.48, 0.25] for w in exfil_weights), "Feature attributions must not be hardcoded constants")
+
+
+    def test_jitter_augmentation_produces_distinct_sequences(self):
+        """Oversampled minority sequences must NOT be byte-identical to originals.
+
+        This regression test guards against the verbatim-copy oversampling bug
+        (b0ee332) where 10-15 identical copies caused RECON/C2 memorisation and
+        100% collapse into BENIGN at test time.
+        """
+        # Two groups: majority class 0 (12 samples), minority class 1 (3 samples)
+        # Class 1 has < 1500 samples so it will be oversampled with jitter.
+        majority_features = [[float(i), 0.0] for i in range(12)]
+        minority_features = [[1.0, 1.0], [2.0, 1.0], [3.0, 1.0]]
+        features = majority_features + minority_features
+        labels = [0] * 12 + [1] * 3
+        groups = ["g0"] * 12 + ["g1"] * 3
+
+        ds_oversampled = TemporalSequenceDataset(features, labels, groups, seq_len=2, oversample=True)
+        ds_original = TemporalSequenceDataset(features, labels, groups, seq_len=2, oversample=False)
+
+        # Get all minority sequences from both datasets
+        orig_minority = [x.numpy() for x, y in ds_original if y.item() == 1]
+        aug_minority = [x.numpy() for x, y in ds_oversampled if y.item() == 1]
+
+        self.assertGreater(len(aug_minority), len(orig_minority),
+                           "Oversampling must produce more minority sequences than without oversampling")
+
+        # At least one augmented sequence must differ from all originals —
+        # if all were byte-identical copies this assertion would fail.
+        orig_set = {x.tobytes() for x in orig_minority}
+        new_sequences_are_distinct = any(x.tobytes() not in orig_set for x in aug_minority)
+        self.assertTrue(new_sequences_are_distinct,
+                        "Oversampled minority sequences must not be byte-identical copies of originals — "
+                        "jitter must produce genuinely different sequences to prevent memorisation")
+
+    def test_focal_loss_penalises_easy_examples_less_than_hard(self):
+        """Focal loss (gamma=2) must suppress loss for confident correct predictions.
+
+        The (1-p_t)^gamma term means: if the model is already 99% confident on a
+        BENIGN sample, its focal contribution approaches zero. For a hard minority
+        sample where p_t≈0.1, the focal weight is ~0.81 — nearly full CE.
+        This test validates the mathematical property; failure would mean gamma
+        is doing nothing (equivalent to plain cross-entropy).
+        """
+        FOCAL_GAMMA = 2.0
+
+        class FocalLoss(nn.Module):
+            def __init__(self, gamma=2.0):
+                super().__init__()
+                self.gamma = gamma
+                self.ce = nn.CrossEntropyLoss(reduction='none')
+
+            def forward(self, logits, targets):
+                ce_loss = self.ce(logits, targets)
+                p_t = torch.exp(-ce_loss)
+                return (((1.0 - p_t) ** self.gamma) * ce_loss).mean()
+
+        focal = FocalLoss(gamma=FOCAL_GAMMA)
+        plain_ce = nn.CrossEntropyLoss()
+
+        # Easy example: model is 99% confident on correct class
+        easy_logits = torch.tensor([[10.0, -5.0, -5.0]])  # strongly predicts class 0
+        easy_target = torch.tensor([0])  # correct class
+
+        # Hard example: model is nearly uniform (confused)
+        hard_logits = torch.tensor([[0.1, 0.1, 0.1]])  # ~33% each
+        hard_target = torch.tensor([0])
+
+        focal_easy = focal(easy_logits, easy_target).item()
+        focal_hard = focal(hard_logits, hard_target).item()
+        ce_easy = plain_ce(easy_logits, easy_target).item()
+        ce_hard = plain_ce(hard_logits, hard_target).item()
+
+        # Easy example: model is 99% confident on correct class → focal contribution → ~0
+        self.assertLess(focal_easy, ce_easy * 0.01,
+                        "Focal loss must heavily suppress easy well-classified examples (< 1% of CE)")
+
+        # Hard example: for uniform 3-class logits with gamma=2, focal suppression is ~11%
+        # (p_t ≈ 0.33, (1-0.33)^2 ≈ 0.45). The key property is suppression is MUCH less
+        # than for easy examples, not that it's zero. Threshold: > 30% of plain CE.
+        self.assertGreater(focal_hard, ce_hard * 0.30,
+                           "Focal loss must not suppress hard misclassified examples more than 70% of CE")
+
+        # Direct comparison: focal loss reduction factor is larger for easy than hard
+        ratio_easy = focal_easy / max(ce_easy, 1e-9)
+        ratio_hard = focal_hard / max(ce_hard, 1e-9)
+        self.assertLess(ratio_easy, ratio_hard,
+                        "Focal loss must reduce easy-example loss proportionally more than hard-example loss")
+
 
 
 if __name__ == "__main__":

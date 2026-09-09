@@ -147,17 +147,27 @@ class TemporalSequenceDataset(Dataset):
             raise ValueError("No complete sequences: each scenario/source-host group needs more than seq_len flows")
 
         if oversample:
-            # Oversample minority attack stages WITHIN train split only.
-            # Target ~1 500 sequence examples per minority class max.
+            # Jitter-augmented oversampling for minority attack stages WITHIN train split only.
+            # Gaussian noise (std=0.05 * per-feature training std) ensures each copy is
+            # distinct — prevents the model from memorising verbatim duplicates and
+            # saturating early before learning hard minority-stage features.
             X_arr = np.array(X_seqs, dtype=np.float32)
             y_arr = np.array(y_seqs, dtype=np.int64)
+            # Compute feature std over ALL training sequences for jitter scaling.
+            # Shape: (seq_len, n_features) -> std over the first axis.
+            feat_std = X_arr.reshape(-1, X_arr.shape[-1]).std(axis=0, keepdims=True)  # (1, 16)
             os_X, os_y = [X_arr], [y_arr]
+            rng = np.random.RandomState(SEED)
             for c in range(1, 7):
                 idx = np.where(y_arr == c)[0]
                 if 0 < len(idx) < 1500:
                     reps = min(15, int(np.ceil(1500 / len(idx))))
                     for _ in range(reps):
-                        os_X.append(X_arr[idx])
+                        # Add small Gaussian jitter — gives the model genuinely new examples
+                        # rather than byte-identical copies that enable memorisation.
+                        noise = rng.randn(*X_arr[idx].shape).astype(np.float32)
+                        jitter_scale = 0.05 * feat_std[np.newaxis, :, :]  # broadcast (n, 10, 16)
+                        os_X.append(X_arr[idx] + noise * jitter_scale)
                         os_y.append(y_arr[idx])
             X_seqs = np.concatenate(os_X, axis=0)
             y_seqs = np.concatenate(os_y, axis=0)
@@ -290,11 +300,37 @@ def main():
     device = torch.device("cpu")
     model = TemporalAttackGRU().to(device)
 
-    # Weighted loss: inverse-frequency class weights on the raw (pre-oversampling) train labels
+    # Focal loss: down-weights easy well-classified benign examples to keep
+    # gradients alive for hard minority RECON / C2 sequences throughout training.
+    # gamma=2.0 is the standard focal loss exponent (Lin et al. 2017).
+    # alpha=inverse-frequency on raw pre-oversampling counts (uncontaminated by duplication).
     class_counts = np.array([train_counts.get(i, 1) for i in range(7)], dtype=np.float32)
     class_weights = torch.tensor(1.0 / (class_counts + 1e-6), dtype=torch.float32)
-    class_weights = class_weights / class_weights.sum() * 7  # normalize to ~1 mean
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    class_weights = class_weights / class_weights.sum() * 7  # normalize to ~1 mean weight
+
+    FOCAL_GAMMA = 2.0  # standard focal exponent — penalises easy examples quadratically
+
+    class FocalLoss(nn.Module):
+        """Cross-entropy with a (1-p_t)^gamma modulating factor (focal loss).
+
+        This multiplicatively suppresses the loss contribution from examples the
+        model already classifies with high confidence (mostly BENIGN), forcing
+        sustained gradient updates on hard minority sequences (RECON, C2).
+        Class-frequency alpha weights are applied before focal modulation.
+        """
+        def __init__(self, alpha: torch.Tensor, gamma: float = 2.0):
+            super().__init__()
+            self.alpha = alpha
+            self.gamma = gamma
+            self.ce = nn.CrossEntropyLoss(reduction='none', weight=self.alpha)
+
+        def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+            ce_loss = self.ce(logits, targets)          # per-sample weighted CE
+            p_t = torch.exp(-ce_loss)                  # p_t = model confidence on true class
+            focal_loss = ((1.0 - p_t) ** self.gamma) * ce_loss
+            return focal_loss.mean()
+
+    criterion = FocalLoss(alpha=class_weights, gamma=FOCAL_GAMMA)
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.003, weight_decay=1e-4)
 
     print(f"\n[*] Training GRU (Epochs=10, Batch=256, SeqLen=10, SEED={SEED})...")

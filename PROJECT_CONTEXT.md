@@ -61,15 +61,29 @@ Important: `benchmark_and_rollout.py` still uses a global chronological split an
 
 ## 7. Exact next implementation order
 
-1. **Review and commit the grouped-builder fix** with its unit test. Also make every benchmark path obey the same grouping policy or mark it unsupported.
-2. **Clean reproducibility run:** retrain a named grouped candidate and run the same grouped benchmark for Logistic Regression and GRU. Do not overwrite v1. Persist reproducibility metadata and per-class results.
-3. **Model-selection gate:** compare weighted/macro F1, benign FPR, per-class recall/support, calibration (ECE), and latency. Mark support below 20 as unreliable. Do not select a model by one aggregate metric alone.
-4. **Split-safe scaling ablation:** fit a scaler on training rows only, apply it to validation/test/inference, serialize it with the candidate, then compare against the no-scaler grouped baseline.
-5. **Packet/flow feature work:** `packet_feature_extractor.py` now provides a separate ten-field PCAP aggregation foundation (TTL, TCP-window, fragment, payload-size, scan fan-out, and repeated-sequence signals). It is not connected to training, live ingestion, `FEATURE_NAMES`, or the deployed 16-dimensional model. Before using it, prove each field is available in both offline training and live ingestion; then version the combined schema, add tests, update the model input dimension, retrain a separately named candidate, and update documentation and artifact metadata together.
-6. **Data quality:** deduplicate near-identical flows in training only; retain provenance. Any synthetic augmentation must be separated and reported from real-data metrics.
-7. **Imbalance experiments:** focal loss/class weighting only as named experiments, with class supports and per-class metrics. Sparse Discovery/Lateral Movement results remain unreliable until more data exists.
-8. **Architecture experiments:** compact 1D-CNN + GRU/BiGRU, then attention pooling, then a compact transformer only after the above and a second public dataset validation. EfficientNet is not a suitable default: it is a 2D image architecture, not a natural fit for flow sequences.
-9. **Forecasting maturity:** add a next-feature prediction head only when labels, evaluation horizons, and real temporal sampling semantics support it. Until then call the system a stage-distribution forecaster, not a generative world model.
+The v2 grouped evaluation (`temporal_gru_forecaster_grouped_v2`) is complete and committed. Key finding: **Logistic Regression outperforms GRU v2 on weighted F1 (71.54% vs 66.61%)** on the grouped CTU-13 holdout. Confusion matrix analysis reveals the cause:
+
+- **RECON** (325 samples): 303/325 predicted as BENIGN — verbatim oversampling caused memorisation without generalization.
+- **C2** (315 samples): all 315 predicted as BENIGN — same root cause, total collapse.
+- **LATERAL** (2 samples): trivially predicted as BENIGN; dataset gap, not fixable with CTU-13 alone.
+- **EXFIL**: GRU outperforms LR (46.74% vs 32.41% F1) — this is the one genuine GRU advantage.
+
+**Fixes applied to `train_temporal_gru.py` (committed, not yet retrained as v3):**
+1. Verbatim oversampling → Gaussian-jittered augmentation (5% per-feature std noise per duplicate).
+2. Weighted CrossEntropyLoss → FocalLoss (γ=2.0, Lin et al. 2017) with inverse-frequency alpha weights.
+
+**Do NOT pursue standardization further.** The grouped-scaled-v3 ablation is a confirmed negative result: F1 dropped from 66.61% (v2) to 61.17% (scaled-v3), same zero-precision collapse. Mark it as a negative result and stop.
+
+**Updated priority order:**
+1. **Train v3 with focal loss + jitter** (changes already in `train_temporal_gru.py`). Name: `temporal_gru_forecaster_grouped_v3.pt`.
+2. **Commit v3 `.pt` file** — the v2 binary was excluded from the repo; v3 should be explicitly pushed for reproducibility, or this decision documented.
+3. **Re-run benchmark** comparing LR vs GRU v3 with the same grouped split.
+4. **If RECON/C2 remain at zero**: target a small UNSW-NB15 / CIC-IDS-2017 subset for those stages before any architecture experiment.
+5. **Architecture experiments (CNN-BiGRU, attention, transformer)** only after step 3 proves the imbalance problem is resolved.
+6. **Packet/flow feature work**: `packet_feature_extractor.py` aggregates a separate ten-field PCAP foundation. Not connected to training. Connect only after proving each field is available in both offline training and live ingestion; then version the combined schema and train a separately named candidate.
+7. **Data quality**: deduplicate near-identical flows in training only; retain provenance.
+8. **Forecasting maturity**: call the current system a stage-distribution forecaster; do not claim generative world model until a next-feature prediction head with proper horizon evaluation exists.
+
 
 ## 8. Commands and validation boundaries
 
