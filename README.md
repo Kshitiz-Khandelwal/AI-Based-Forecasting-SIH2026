@@ -181,18 +181,35 @@ Black-box predictions are unacceptable in Critical Information Infrastructure. T
 
 ## 📊 Empirical Benchmark: World Model vs. Baseline
 
-Comparison between the **Cyber World Model (Temporal Dynamics)** and a standard **Logistic Regression (Isolated Static Flows)** baseline on multi-stage attack traffic (**CIC-IDS-2018 & CTU-13**):
+Evaluation of the **Temporal GRU (v2, grouped-sequence)** on the CTU-13 holdout using **scenario and source-host isolated windows** to prevent boundary leakage. Prior window-flattened results are invalidated and excluded.
 
-| Evaluation Metric | Static Baseline (Logistic Regression) | Cyber World Model (Temporal GRU Dynamics) | Relative Improvement |
-| :--- | :---: | :---: | :---: |
-| **F1-Score (Multi-Stage Attack)** | `0.7842` | **`0.9638`** | **+22.9%** |
-| **Precision** | `0.8120` | **`0.9715`** | **+19.6%** |
-| **Recall (Early Infiltration Stages)** | `0.7580` | **`0.9562`** | **+26.1%** |
-| **False Positive Rate (FPR)** | `4.12%` | **`0.38%`** | **-90.8% reduction** |
-| **Lead Time to Compromise Detection** | $0\text{ min}$ (Post-facto alert) | **$18.4\text{ min}$ (Pre-compromise)** | **Early Preemption** |
-| **Causal Temporal Generalization** | Fails on slow stealth scans | Captures long-tail timing ($P(S_{t+1} \mid S_t)$) | **Robust against evasion** |
+> ⚠️ **Logistic Regression baseline is pending a corrected grouped rerun.** The table below reports GRU-only verified numbers. A head-to-head comparison will be added after the baseline is rerun with the same grouped builder.
 
-*Complete benchmark reproduction code, seed parameters, and classification reports are available in [`docs/BENCHMARK_WORLD_MODEL_VS_LOGISTIC_REGRESSION.md`](docs/BENCHMARK_WORLD_MODEL_VS_LOGISTIC_REGRESSION.md).*
+| Evaluation Metric | Temporal GRU (v2, grouped · CTU-13) | Status |
+| :--- | :---: | :--- |
+| **Weighted F1** | **66.61%** | ✅ Verified — persisted grouped holdout |
+| **Weighted Precision** | 66.23% | ✅ Verified |
+| **Weighted Recall** | 70.05% | ✅ Verified |
+| **Benign FPR** | **2.33%** | ✅ Verified |
+
+**Per-class breakdown** (same grouped CTU-13 holdout, `temporal_gru_forecaster_grouped_v2_evaluation.json`):
+
+| Stage | F1 | Holdout Samples | Reliability |
+| :--- | :---: | ---: | :--- |
+| STAGE_0_BENIGN | 91.82% | 4,510 | ✅ Sufficient |
+| STAGE_1_RECONNAISSANCE | 0.00% | 325 | ⚠️ Feature collapse — zero precision (see caveats) |
+| STAGE_2_INITIAL_ACCESS | 42.76% | 2,021 | ✅ Sufficient |
+| STAGE_3_DISCOVERY | 0.00% | 0 | ❌ No holdout samples in CTU-13 |
+| STAGE_4_C2_PERSISTENCE | 0.00% | 315 | ⚠️ Feature collapse — zero precision (see caveats) |
+| STAGE_5_LATERAL_MOVEMENT | 0.00% | 2 | ❌ Low sample — metric not reliable |
+| STAGE_6_EXFILTRATION | 46.74% | 1,143 | ✅ Sufficient |
+
+**Caveats (required transparency per Project Context rules):**
+- This is the **v2 experimental candidate** — not the deployed v1 model.
+- Recon/C2/Lateral stages show zero precision: the model assigns no probability mass to those minority stages in the holdout. This is a known imbalance problem; oversampling and focal loss experiments are queued.
+- Discovery has zero holdout samples in CTU-13; this is a dataset coverage gap, not a model failure.
+- Reproduction: `python services/forecasting_engine/run_full_ml_benchmark.py` (requires CTU-13 at `data/ctu13_multistage_flows.csv`).
+
 
 ---
 

@@ -20,7 +20,7 @@ export function LandingNav() {
             <Shield className="h-5 w-5 text-trace" />
           </motion.div>
           <span className="font-display text-base font-bold tracking-tight text-text">
-            DNS SHIELD
+            X-FORECAST
           </span>
         </Link>
 
@@ -52,7 +52,7 @@ export function LandingNav() {
               href="/login"
               className="rounded-lg bg-trace px-4 py-2 text-sm font-medium text-ink transition-all duration-150 hover:bg-emerald-600 hover:shadow-md active:scale-95"
             >
-              Dashboard →
+              Forecast Console →
             </Link>
           </motion.div>
         </nav>

@@ -9,6 +9,7 @@ import time
 import math
 import logging
 import os
+import json
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -203,6 +204,8 @@ class AttackForecastingEngine:
         # Load trained PyTorch GRU neural model
         self.device = torch.device("cpu")
         self.gru_loaded = False
+        self.temperature = 1.0
+        self.calibration_loaded = False
         try:
             self.gru_model = TemporalAttackGRU(input_dim=16, hidden_dim=64, num_classes=7).to(self.device)
             model_path = os.path.join(os.path.dirname(__file__), "models", "temporal_gru_forecaster.pt")
@@ -217,6 +220,24 @@ class AttackForecastingEngine:
             logger.warning(f"Could not load GRU weights: {e}")
             self.gru_model = None
             self.gru_loaded = False
+
+        calibration_path = os.path.join(os.path.dirname(__file__), "models", "temporal_gru_calibration.json")
+        if os.path.exists(calibration_path):
+            try:
+                with open(calibration_path, "r", encoding="utf-8") as calibration_file:
+                    calibration = json.load(calibration_file)
+                candidate_temperature = float(calibration.get("temperature", 1.0))
+                calibrated_model = calibration.get("model_file")
+                if calibrated_model not in (None, "temporal_gru_forecaster.pt"):
+                    logger.warning("Ignoring calibration for a different GRU artifact")
+                elif 0.05 <= candidate_temperature <= 10.0:
+                    self.temperature = candidate_temperature
+                    self.calibration_loaded = True
+                    logger.info(f"[+] Loaded validation-only GRU temperature calibration (T={self.temperature:.4f})")
+                else:
+                    logger.warning("Ignoring out-of-range GRU temperature calibration")
+            except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                logger.warning(f"Could not load GRU temperature calibration: {exc}")
 
         logger.info("Initialized Temporal Attack Forecasting Engine with Neural GRU + Markov Rollout Matrix")
 
@@ -453,7 +474,7 @@ class AttackForecastingEngine:
         if self.gru_model is not None and self.gru_loaded:
             self.gru_model.eval()
             with torch.no_grad():
-                logits = self.gru_model(seq_tensor)
+                logits = self.gru_model(seq_tensor) / self.temperature
                 gru_probs = torch.softmax(logits, dim=-1).cpu().numpy()[0]
 
             if heur_stage != "STAGE_0_BENIGN":
@@ -479,7 +500,7 @@ class AttackForecastingEngine:
                 for f_idx, feat_name in enumerate(FEATURE_NAMES):
                     perturbed = seq_tensor.clone()
                     perturbed[0, :, f_idx] = 0.0
-                    pert_logits = self.gru_model(perturbed)
+                    pert_logits = self.gru_model(perturbed) / self.temperature
                     pert_probs = torch.softmax(pert_logits, dim=-1).cpu().numpy()[0]
                     pert_threat_prob = 1.0 - float(pert_probs[0])
                     impact = base_threat_prob - pert_threat_prob
@@ -631,7 +652,8 @@ class AttackForecastingEngine:
             "feature_attributions": "perturbation_analysis_on_gru_input" if (self.gru_model and self.gru_loaded) else "heuristic_feature_weights",
             "priors_source": self.priors_source,
             "calibrated_transitions_file": "services/forecasting_engine/priors.json" if self.priors_calibrated else "not_loaded",
-            "neural_model_file": "services/forecasting_engine/models/temporal_gru_forecaster.pt" if self.gru_loaded else "not_loaded"
+            "neural_model_file": "services/forecasting_engine/models/temporal_gru_forecaster.pt" if self.gru_loaded else "not_loaded",
+            "confidence_calibration": "validation_temperature_scaling" if self.calibration_loaded else "identity_temperature_no_calibration_artifact"
         }
 
         return AttackForecastResult(

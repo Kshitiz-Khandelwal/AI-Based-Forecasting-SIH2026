@@ -25,8 +25,10 @@ from services.forecasting_engine.train_temporal_gru import (
     TemporalSequenceDataset,
     STAGE_MAP,
     STAGE_NAMES,
-    label_flow
+    label_flow,
+    chronological_split_per_scenario,
 )
+from services.forecasting_engine.evaluation_metrics import evaluation_summary
 
 def run_benchmark():
     print("="*80, flush=True)
@@ -37,29 +39,31 @@ def run_benchmark():
     print(f"[*] Loading dataset: {data_path}", flush=True)
     df = pd.read_csv(data_path, low_memory=False)
     df['StartTime'] = pd.to_datetime(df['StartTime'])
-    df = df.sort_values(by='StartTime').reset_index(drop=True)
-
     print(f"[+] Total Chronological Flows: {len(df)}", flush=True)
-    
-    # Feature extraction
-    feature_list = []
-    label_list = []
-    for _, row in df.iterrows():
-        feature_list.append(extract_flow_features(row))
-        label_list.append(label_flow(row))
-    
-    X_all = np.vstack(feature_list)
-    y_all = np.array(label_list, dtype=np.int64)
 
-    # 70% Train / 15% Val / 15% Held-Out Test
-    n = len(X_all)
-    train_end = int(n * 0.70)
-    val_end = int(n * 0.85)
+    # This must mirror train_temporal_gru.py and run_full_ml_benchmark.py exactly:
+    # chronological split *within* every scenario, followed by source-host-isolated
+    # windows. A global split/window can create histories from unrelated captures.
+    train_df, _, test_df = chronological_split_per_scenario(df, ratios=(0.70, 0.15, 0.15))
 
-    X_train, y_train = X_all[:train_end], y_all[:train_end]
-    X_test, y_test = X_all[val_end:], y_all[val_end:]
+    def featurize(partition):
+        features = np.vstack([extract_flow_features(row) for _, row in partition.iterrows()])
+        labels = np.array([label_flow(row) for _, row in partition.iterrows()], dtype=np.int64)
+        groups = (
+            partition["Scenario"].fillna("unknown_scenario").astype(str)
+            + "::"
+            + partition["SrcAddr"].fillna("unknown_source").astype(str)
+        ).to_numpy()
+        return features, labels, groups
 
-    print(f"[+] Split: Train={len(X_train)} flows, Test={len(X_test)} flows (Strict chronological hold-out)", flush=True)
+    X_train, y_train, train_groups = featurize(train_df)
+    X_test, y_test, test_groups = featurize(test_df)
+    grouping_policy = "Scenario + SrcAddr"
+    print(
+        f"[+] Split: Train={len(X_train)} flows, Test={len(X_test)} flows "
+        "(per-scenario chronological hold-out; source-host-isolated windows)",
+        flush=True,
+    )
 
     # ─────────────────────────────────────────────────────────────────────────────
     # 1. LOGISTIC REGRESSION BASELINE (Non-Temporal)
@@ -101,7 +105,7 @@ def run_benchmark():
     gru_model.eval()
 
     seq_len = 10
-    test_ds = TemporalSequenceDataset(X_test, y_test, seq_len=seq_len)
+    test_ds = TemporalSequenceDataset(X_test, y_test, test_groups, seq_len=seq_len)
     test_loader = DataLoader(test_ds, batch_size=256, shuffle=False)
 
     gru_preds = []
@@ -129,6 +133,25 @@ def run_benchmark():
 
     print(f"[+] GRU Temporal Model: Inference Latency={t_gru_infer:.4f} ms/sequence", flush=True)
     print(f"    Weighted Precision: {gru_p*100:.2f}% | Recall: {gru_r*100:.2f}% | F1: {gru_f1*100:.2f}% | Benign FPR: {gru_fpr*100:.2f}%", flush=True)
+
+    results_path = "services/forecasting_engine/models/benchmark_and_rollout_results.json"
+    with open(results_path, "w", encoding="utf-8") as results_file:
+        json.dump({
+            "dataset": data_path,
+            "split": "chronological_per_scenario_70_15_15",
+            "sequence_grouping": grouping_policy,
+            "split_metadata": {
+                "train_flow_count": int(len(X_train)),
+                "test_flow_count": int(len(X_test)),
+                "train_group_count": int(len(np.unique(train_groups))),
+                "test_group_count": int(len(np.unique(test_groups))),
+                "sequence_length": seq_len,
+                "test_sequence_count": int(len(test_ds)),
+            },
+            "logistic_regression": evaluation_summary(y_test, lr_preds, STAGE_NAMES),
+            "temporal_gru": evaluation_summary(gru_targets, gru_preds, STAGE_NAMES),
+        }, results_file, indent=2)
+    print(f"[+] Persisted per-class metrics to {results_path}", flush=True)
 
     # ─────────────────────────────────────────────────────────────────────────────
     # 3. SIDE-BY-SIDE BENCHMARK TABLE (Step 6 Verification)
@@ -190,11 +213,20 @@ def run_benchmark():
 
         return trajectory
 
-    # Test on Sample Benign Sequence vs Sample Attack Sequence
-    # Sample 1: Benign Baseline Sequence (all benign flows)
-    benign_indices = np.where(y_test == 0)[0]
-    benign_start = benign_indices[10]
-    seq_benign = X_test[benign_start : benign_start + 10]
+    def find_grouped_sequence(target_predicate):
+        """Return a sequence and target whose complete history is one group."""
+        for group_id in np.unique(test_groups):
+            indices = np.flatnonzero(test_groups == group_id)
+            for start in range(len(indices) - seq_len):
+                target_index = indices[start + seq_len]
+                if target_predicate(y_test[target_index]):
+                    return X_test[indices[start:start + seq_len]], int(y_test[target_index])
+        return None, None
+
+    # Test only valid Scenario+SrcAddr histories, never arbitrary flattened slices.
+    seq_benign, benign_target = find_grouped_sequence(lambda stage: stage == 0)
+    if seq_benign is None:
+        raise ValueError("Held-out partition contains no complete benign grouped sequence")
     traj_benign = autoregressive_rollout(seq_benign, steps=4)
 
     print("\n--- Sample 1: Benign Host Trajectory Forecast ---", flush=True)
@@ -202,10 +234,8 @@ def run_benchmark():
         print(f"  [+{step_info['horizon_min']} min] -> {step_info['stage']} (Conf: {step_info['confidence']*100:.1f}%) | Dist: Benign={step_info['stage_distribution']['STAGE_0_BENIGN']*100:.1f}%, Attack={step_info['stage_distribution']['STAGE_6_EXFILTRATION']*100:.1f}%", flush=True)
 
     # Sample 2: Active Infiltration Sequence (trending toward attack)
-    attack_indices = np.where(y_test > 0)[0]
-    if len(attack_indices) > 0:
-        att_start = max(0, attack_indices[0] - 5)
-        seq_attack = X_test[att_start : att_start + 10]
+    seq_attack, attack_target = find_grouped_sequence(lambda stage: stage > 0)
+    if seq_attack is not None:
         traj_attack = autoregressive_rollout(seq_attack, steps=4)
 
         print("\n--- Sample 2: Active Multi-Stage Attack Host Trajectory Forecast ---", flush=True)
@@ -239,10 +269,13 @@ def run_benchmark():
         sorted_attr = sorted(attributions.items(), key=lambda x: abs(x[1]), reverse=True)
         return sorted_attr[:5]
 
-    print("\nAttribution for Attack-Trending Prediction:")
-    att_exp = explain_sequence_attribution(seq_attack, target_label_idx=int(y_test[att_start+9]))
-    for feat_name, weight in att_exp:
-        print(f"  - {feat_name:<20}: attribution weight = {weight:+.4f} ({'Elevating threat' if weight > 0 else 'Dampening'})", flush=True)
+    if seq_attack is not None:
+        print("\nAttribution for Attack-Trending Prediction:")
+        att_exp = explain_sequence_attribution(seq_attack, target_label_idx=attack_target)
+        for feat_name, weight in att_exp:
+            print(f"  - {feat_name:<20}: attribution weight = {weight:+.4f} ({'Elevating threat' if weight > 0 else 'Dampening'})", flush=True)
+    else:
+        print("\n[!] No complete attack-stage grouped sequence available for attribution.", flush=True)
 
     print("="*80, flush=True)
     print("[+] Benchmark, Rollout, and Explainability successfully verified on held-out test data.", flush=True)

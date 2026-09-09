@@ -24,55 +24,55 @@ import { GeoContextStrip } from "./GeoContextStrip";
 const PIPELINE_PILLARS = [
   {
     stage: 1,
-    title: "Sovereign Allowlist & Redis Hot Cache",
-    latency: "< 0.5 ms",
-    badge: "Stage 1 & 2",
-    description: "Evaluates sovereign Indian infrastructure (.gov.in, isro.gov.in, drdo.gov.in) with a 0% False Positive guarantee in sub-0.1ms, or fetches recent verdicts from in-memory Redis cache.",
+    title: "Ingest Flow & PCAP Telemetry",
+    latency: "Sₜ input",
+    badge: "Step 1",
+    description: "NetFlow/IPFIX and PCAP-derived flow records form the 16-feature state vector for each observed time step. DNS is one supporting telemetry source.",
     icon: Database,
     accent: "text-emerald-700 bg-emerald-50 border-emerald-200"
   },
   {
     stage: 2,
-    title: "Threat Intel (STIX/TAXII)",
-    latency: "< 1.0 ms",
-    badge: "Stage 3",
-    description: "Queries high-speed in-memory hash sets populated from URLhaus, AlienVault OTX, and STIX feeds. Instant 100-point contribution on known active C2 / malware indicators.",
+    title: "Learn Transition Dynamics",
+    latency: "GRU",
+    badge: "Step 2",
+    description: "A trained two-layer GRU reads a 10-step window and estimates the current seven-stage MITRE-aligned attack-state distribution.",
     icon: ShieldAlert,
     accent: "text-rose-700 bg-rose-50 border-rose-200"
   },
   {
     stage: 3,
-    title: "Local Deterministic Rules",
-    latency: "< 0.3 ms",
-    badge: "Stage 4",
-    description: "Evaluates RFC 1035 compliance, excessive subdomain depth, dangerous TLD scoring, and punycode/IDN homoglyph normalization without external network calls.",
+    title: "Project K Steps Forward",
+    latency: "+15–60 min",
+    badge: "Step 3",
+    description: "A CTU-13-calibrated Markov transition matrix rolls the stage distribution forward at 15, 30, and 60-minute horizons.",
     icon: FileCheck2,
     accent: "text-blue-700 bg-blue-50 border-blue-200"
   },
   {
     stage: 4,
-    title: "ML Lexical Engine (Random Forest + TreeSHAP)",
-    latency: "~30 ms",
-    badge: "Stage 5",
-    description: "Extracts 19 mathematical features (Shannon entropy, digit/vowel ratios, consonant clustering, brand Levenshtein distances) and evaluates a 150-tree Random Forest explained via TreeSHAP.",
+    title: "Map to MITRE ATT&CK",
+    latency: "7 stages",
+    badge: "Step 4",
+    description: "Forecasts are expressed as reconnaissance, initial access, discovery, C2, lateral movement, and exfiltration/impact stages for SOC action.",
     icon: BrainCircuit,
     accent: "text-purple-700 bg-purple-50 border-purple-200"
   },
   {
     stage: 5,
-    title: "Behavioral Sliding Window Tracker",
-    latency: "~1.5 ms",
-    badge: "Stage 6",
-    description: "Correlates individual endpoint query frequency in a 60-second sliding window to detect DGA NXDOMAIN spray attacks, fast-flux DNS, and high-frequency tunneling bursts.",
+    title: "Explain & Respond",
+    latency: "Attribution",
+    badge: "Step 5",
+    description: "Perturbation-based feature attribution shows which observed flow signals changed the forecast; response and DNS controls can then support containment.",
     icon: Activity,
     accent: "text-amber-700 bg-amber-50 border-amber-200"
   },
   {
     stage: 6,
-    title: "Geo-Intel & Active Response",
-    latency: "< 1.0 ms",
-    badge: "Stage 7",
-    description: "Enriches destination IPs with local GeoLite2 ASN jurisdiction. When device risk >= 80, automatically triggers zero-trust VLAN quarantine and DNS sinkholing (0.0.0.0).",
+    title: "Supporting DNS Defense",
+    latency: "Secondary",
+    badge: "Ingestion & response",
+    description: "The existing DNS filtering pipeline supplies additional telemetry and can enforce a response, but it is not the forecasting model’s primary claim.",
     icon: ZapOff,
     accent: "text-slate-700 bg-slate-100 border-slate-300"
   }
@@ -88,14 +88,14 @@ export function HowItWorks() {
         {/* Section Header */}
         <div className="max-w-2xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 shadow-2xs">
-            Architecture &amp; Defense-in-Depth
+            Forecasting Architecture
           </div>
           <h2 className="font-display text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">
-            Seven Synchronous Stages. <span className="text-emerald-600">Zero Black-Box Guesswork.</span>
+            Observe the present. <span className="text-emerald-600">Forecast the next attack state.</span>
           </h2>
           <p className="mt-3 text-base text-slate-600 font-sans leading-relaxed">
-            Unlike opaque commercial DNS filtering services, DNS Shield is engineered around a transparent, 
-            cheap-to-expensive evaluation chain that outputs full mathematical audit traces for every lookup.
+            The core path learns network-state transitions from temporal telemetry, then makes an auditable
+            multi-horizon forecast. DNS filtering remains visible below as a supporting capability.
           </p>
         </div>
 

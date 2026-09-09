@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { getModelMetadata, getStats } from "@/lib/api";
 import type { ModelMetadata, StatsResponse } from "@/lib/types";
 import { useInView } from "@/hooks/useInView";
-import { TrendingDown, TrendingUp, Minus, Cpu } from "lucide-react";
+import { TrendingDown, TrendingUp, Minus, Cpu, BrainCircuit, Database } from "lucide-react";
 
 function AnimatedNumber({ target }: { target: number }) {
   const [val, setVal] = useState(0);
@@ -27,7 +27,7 @@ function AnimatedNumber({ target }: { target: number }) {
   return <span ref={ref as React.RefObject<HTMLSpanElement>}>{val.toLocaleString()}</span>;
 }
 
-const metrics = [
+const dnsMetrics = [
   {
     key: "allowed_24h",
     label: "Allowed (24 h)",
@@ -79,15 +79,25 @@ export function LiveMetrics() {
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         >
           <p className="mb-2 font-mono text-[11px] font-medium uppercase tracking-wider text-muted">
-            Live metrics
+            Forecasting telemetry
           </p>
           <h2 className="font-display text-[28px] font-bold tracking-tight text-text md:text-[36px]">
-            Measured, not claimed.
+            From observed traffic to a projected attack path.
           </h2>
         </motion.div>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {metrics.map((m, i) => {
+          <motion.div className="rounded-xl border border-violet-100 bg-violet-50 p-5" initial={{ opacity: 0, y: 24 }} animate={inView ? { opacity: 1, y: 0 } : {}} transition={{ duration: 0.45 }}>
+            <div className="mb-3 flex items-center justify-between"><span className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted">State model</span><BrainCircuit className="h-4 w-4 text-violet-500" /></div>
+            <p className="font-mono text-3xl font-bold tabular-nums text-violet-600">7 stages</p>
+            <p className="mt-1 font-mono text-[10px] text-muted">GRU classification + Markov rollout</p>
+          </motion.div>
+          <motion.div className="rounded-xl border border-blue-100 bg-blue-50 p-5" initial={{ opacity: 0, y: 24 }} animate={inView ? { opacity: 1, y: 0 } : {}} transition={{ duration: 0.45, delay: 0.1 }}>
+            <div className="mb-3 flex items-center justify-between"><span className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted">Calibration corpus</span><Database className="h-4 w-4 text-blue-500" /></div>
+            <p className="font-mono text-3xl font-bold tabular-nums text-blue-600">60,273</p>
+            <p className="mt-1 font-mono text-[10px] text-muted">CTU-13 observed transitions</p>
+          </motion.div>
+          {dnsMetrics.slice(0, 2).map((m, i) => {
             const Icon = m.icon;
             const raw = (stats as unknown as Record<string, number>)[m.key] ?? 0;
             return (
@@ -112,7 +122,7 @@ export function LiveMetrics() {
             );
           })}
 
-          {/* Model card */}
+          {/* Secondary model card: DNS pipeline metadata */}
           <motion.div
             className="rounded-xl border border-violet-100 bg-violet-50 p-5"
             initial={{ opacity: 0, y: 24 }}

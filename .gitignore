@@ -13,3 +13,14 @@ infra/certs/*.key
 *.rdb
 *.db
 data/audit.log
+
+# Candidate / experimental GRU model binaries (keep only deployed v1 in git)
+# Evaluation JSON reports ARE tracked — only binary weights are excluded
+services/forecasting_engine/models/temporal_gru_forecaster_grouped_v2.pt
+services/forecasting_engine/models/temporal_gru_forecaster_grouped_v3.pt
+services/forecasting_engine/models/temporal_gru_forecaster_grouped_scaled_v3.pt
+services/forecasting_engine/models/temporal_gru_forecaster_v2.pt
+
+# Training / benchmark run logs (transient, regeneratable)
+services/forecasting_engine/models/*.stdout.log
+services/forecasting_engine/models/*.stderr.log

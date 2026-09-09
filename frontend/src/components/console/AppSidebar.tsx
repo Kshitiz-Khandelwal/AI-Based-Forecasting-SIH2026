@@ -40,8 +40,8 @@ const navGroups: NavGroup[] = [
   {
     label: "MONITORING",
     items: [
+      { href: "/app/forecast", label: "AI World Model", icon: TrendingUp, badge: "CORE", badgeColor: "bg-purple-100 text-purple-700 border-purple-200" },
       { href: "/app/dashboard", label: "Overview", icon: LayoutDashboard },
-      { href: "/app/forecast", label: "Attack Forecasting", icon: TrendingUp, badge: "SIH 2026", badgeColor: "bg-purple-100 text-purple-700 border-purple-200" },
       { href: "/app/queue", label: "Live Traffic", icon: Radio },
       { href: "/app/analytics", label: "Analytics", icon: Activity },
     ],

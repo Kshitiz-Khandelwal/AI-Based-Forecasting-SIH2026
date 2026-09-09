@@ -1,90 +1,82 @@
-# DNS Shield & Cyber World Model — System Architecture
-> **Problem Statement ID**: 26153 | **Organization**: National Technical Research Organisation (NTRO)  
-> **Challenge**: AI based Network Attack Forecasting from Network Traffic Data  
-> **Official 2-Page Deliverable**: See [`docs/ARCHITECTURE_DOCUMENT_PS26153.md`](docs/ARCHITECTURE_DOCUMENT_PS26153.md)  
-> **Version**: 3.0 (World Model & Dual-Level Telemetry Release)  
-> **Status**: `[IMPLEMENTED ✅]` Multi-service temporal forecasting pipeline and Next.js 15 SOC dashboard.
+# AI World Model for Network Attack Forecasting
 
----
+**NTRO PS #26153 — AI-Based Network Attack Forecasting from Network Traffic Data**
 
-## 1. High-Level Topology: Fast-Path Defense & Cyber World Model
+## 1. Problem framing
 
-The system integrates synchronous line-rate DNS filtering (< 10 ms SLA) with deep temporal attack progression forecasting ($15 \dots 60\text{ minutes}$ ahead) using a Cyber World Model that learns network state dynamics $P(S_{t+1} \mid S_t)$.
+The system forecasts how an observed network attack is likely to progress, rather than treating DNS filtering as the primary deliverable. It estimates a current attacker state from temporal network telemetry, projects likely future states over multiple horizons, maps those states to MITRE ATT&CK, and supplies feature-level explanations. DNS filtering is retained as a supporting telemetry and response control.
 
-```mermaid
-flowchart TD
-    %% Telemetry Ingestion
-    subgraph Ingestion [Dual-Level Telemetry Ingestion]
-        T1[Level 1: NetFlow / IPFIX\n5-tuple, TCP flags, IAT stats, byte ratios]
-        T2[Level 2: Packet PCAP Stream\nTTL variance, Window size, Port scan seq]
-        T3[DNS Queries: UDP 53 / DoH 443]
-    end
+## 2. State representation
 
-    %% Ingestion & Normalizer
-    Ingestion --> GW[API Gateway Orchestrator\nPort 8081]
-    Ingestion --> FI[Flow Ingestion Engine\nPort 8006]
+At each time step, $S_t$ is a 16-dimensional flow-level vector extracted from NetFlow/IPFIX-style records: duration, packet and byte totals, source/destination bytes, rates, average packet size, protocol flags, port categories, internal-destination status, and SYN/scan status. The model consumes a sliding window of 10 ordered flow vectors.
 
-    %% Fast Path Layer
-    subgraph FastPath [Fast-Path Triage Layer (< 5 ms)]
-        GW --> Redis[(Redis In-Memory\nBloom Filter & Hot Cache)]
-        GW --> TI[Threat Intel Service\nPort 8003]
-        GW --> Geo[Geo-Intel & ASN\nPort 8002]
-    end
+Packet-level extraction groundwork now exists in `services/forecasting_engine/packet_feature_extractor.py`. Its `PacketFeatureAccumulator` aggregates PCAP-supplied observations by directional 5-tuple into a separate, ten-field future schema: TTL variation; TCP-window and payload-size statistics; fragment indicators; source-port fan-out/scan indicators; and a repeated-TCP-sequence retransmission heuristic. It is intentionally separate from `temporal_feature_extractor.FEATURE_NAMES`: no packet-derived field is fed to the deployed 16-dimensional GRU, and no expanded-schema model has been trained or selected.
 
-    %% Deep Analysis Layer
-    subgraph DeepAnalysis [Lexical & Behavioral Layer]
-        GW --> ML[ML Lexical & TreeSHAP\nPort 8000]
-        GW --> BE[Behavioral Sliding Window\nPort 8001]
-    end
+## 3. Transition dynamics model
 
-    %% Cyber World Model Layer
-    subgraph WorldModel [Cyber World Model & Forecasting Engine]
-        FI --> StateBuf[16-Dim State Tensor S_t\nSliding 900s Session Buffer]
-        StateBuf --> FE[Forecasting Engine\nPort 8007\nPyTorch Bi-GRU Sequence Forecaster]
-        FE --> Rollout[K-Step Forward Rollout\nt+15m, t+30m, t+60m Horizons]
-        FE --> TTC[Time-to-Compromise Estimator\nFormal Bayesian Prior Calculation]
-        FE --> XAI[Dynamic Sequence Perturbation\nFeature Attribution]
-    end
+`services/forecasting_engine/train_temporal_gru.py` defines a PyTorch GRU with `input_dim=16`, `hidden_dim=64`, two recurrent layers, and a seven-class softmax output. It classifies the current distribution across benign traffic plus six MITRE-aligned attack stages. Training uses chronological per-scenario partitions and class-weighted cross-entropy.
 
-    %% Proactive Action & Telemetry
-    subgraph Response [Proactive Defense & SOC Telemetry]
-        GW --> AR[Active Response\nPort 8004\nQuarantine & Micro-Segmentation]
-        GW --> DB[(Analytics Store\nPort 8005)]
-        WorldModel --> AR
-        WorldModel --> UI[Enterprise SOC Dashboard\nNext.js 15 App Router\nPort 3000]
-    end
-```
+This is a discrete-state approximation of a world model: it predicts an attack-stage distribution, not a generative future raw-feature vector. Inference and perturbation explanations are implemented in `services/forecasting_engine/attack_forecaster.py`.
 
----
+## 4. K-step forward simulation
 
-## 2. Microservice Port Specifications & Roles
+The GRU softmax distribution $p$ seeds a calibrated Markov transition matrix $M$:
 
-| Service | Port | Primary Responsibility | Key Libraries & Technologies |
-| :--- | :---: | :--- | :--- |
-| **`api-gateway`** | `:8081` | Central API orchestrator, rate limiter, and fast-to-deep router | FastAPI, Requests, Redis client, Pydantic |
-| **`flow_ingest`** | `:8006` | Ingests NetFlow/IPFIX JSON and raw PCAP frame streams (Levels 1 & 2) | Scapy/struct, NumPy, Pandas |
-| **`forecasting_engine`** | `:8007` | Cyber World Model $P(S_{t+1}\mid S_t)$, $K$-step rollout, and TTC | PyTorch Bi-GRU, Markov Matrix, SciPy |
-| **`ml-inference`** | `:8000` | 19-feature lexical classifier with exact TreeSHAP attribution | scikit-learn, LightGBM, SHAP, Joblib |
-| **`behavioral-engine`**| `:8001` | Sliding-window host profiling and burst QPS tracking | Redis sorted sets, Python collections |
-| **`geo-intel`** | `:8002` | Sovereign IP, ASN risk scoring, and fast-flux TTL decay tracking | MaxMind GeoLite2, IPWhois |
-| **`threat-intel`** | `:8003` | Live STIX 2.1 JSON parser, URLhaus, and CERT-In IOC feeds | Python, Redis cache |
-| **`active-response`** | `:8004` | Preemptive micro-segmentation, quarantine, and emulated relay | REST API, Software GPIO driver |
-| **`analytics-store`** | `:8005` | Telemetry persistence, shift reporting, and metric rollups | SQLite / Redis / JSONL logs |
-| **`frontend`** | `:3000` | Enterprise SOC Console, MITRE matrix, and forecasting UI | Next.js 15 (App Router), Tailwind CSS, Lucide |
+$$p_{15}=pM, \qquad p_{30}=pM^2, \qquad p_{60}=pM^4.$$
 
----
+`services/forecasting_engine/priors.json`, produced by `calibrate_priors.py`, holds transition and dwell-time priors. Provenance identifies CTU-13 empirical calibration with **N=60,273 transitions**, while preserving warnings for sparse or unobserved stages.
 
-## 3. Resilience, Fail-Open & Degradation Architecture
+## 5. MITRE ATT&CK mapping
 
-To protect Critical Information Infrastructure without creating a single point of failure:
-1. **Synchronous DNS Fail-Open**: If the deep forecasting engine or behavioral profiler experiences queue saturation, DNS resolution instantly falls back to fast-path Redis Bloom filters and local deterministic rules in $< 1\text{ ms}$, ensuring network uptime.
-2. **Offline Air-Gapped Operation**: All models, threat intelligence caches, and UI assets are hosted locally. Zero external API calls to public cloud providers are made.
-3. **Formal Mathematical Explainability**: No black-box outputs. Predictions are paired with exact TreeSHAP values ($\phi$) and dynamic sequence perturbation scores ($\Delta P(\text{threat})$).
+| Model stage | MITRE ATT&CK mapping |
+|---|---|
+| Benign | Normal operational traffic |
+| Reconnaissance | TA0043, T1595 Active Scanning |
+| Initial Access | TA0001, T1566, T1568 |
+| Discovery | TA0007, T1046 Network Service Discovery |
+| C2 Persistence | TA0011, T1071 Application Layer Protocol |
+| Lateral Movement | TA0008, T1021 Remote Services |
+| Exfiltration / Impact | TA0010, T1048 |
 
----
+## 6. Explainability
 
-For full architectural blueprints, mathematical formulas, and benchmark comparisons, refer to:
-- [`docs/ARCHITECTURE_DOCUMENT_PS26153.md`](docs/ARCHITECTURE_DOCUMENT_PS26153.md) (Official 2-Page Architecture Deliverable)
-- [`docs/TECHNICAL_PRESENTATION_5_SLIDES.md`](docs/TECHNICAL_PRESENTATION_5_SLIDES.md) (5-Slide Jury Defense Deck)
-- [`docs/DEMO_VIDEO_SCRIPT_2_MINUTES.md`](docs/DEMO_VIDEO_SCRIPT_2_MINUTES.md) (2-Minute Demo Video Script)
-- [`docs/BENCHMARK_WORLD_MODEL_VS_LOGISTIC_REGRESSION.md`](docs/BENCHMARK_WORLD_MODEL_VS_LOGISTIC_REGRESSION.md) (Benchmark Study)
+For each input feature $j$, the engine zeros that feature over the 10-step sequence and measures the threat-probability change:
+
+$$\Delta_j=P(\mathrm{threat}\mid X)-P(\mathrm{threat}\mid X_{\setminus j}).$$
+
+Features are ranked by $|\Delta_j|$. This is perturbation attribution on the GRU input, not TreeSHAP; TreeSHAP belongs to the separate DNS lexical classifier.
+
+## 7. Baseline validation
+
+PS #26153 requires a baseline comparison. `services/forecasting_engine/run_full_ml_benchmark.py` trains `sklearn.linear_model.LogisticRegression` on flattened 10-step temporal windows and compares it with the GRU using a chronological per-scenario CTU-13 holdout.
+
+| Model | Weighted F1 | Precision | Recall | Benign FPR | Notes |
+|---|---:|---:|---:|---:|---|
+| Logistic Regression | Pending grouped rerun | — | — | — | Must be rerun with grouped-builder before comparison |
+| Temporal GRU (v2, grouped) | **66.61%** | 66.23% | 70.05% | **2.33%** | Grouped Scenario+SrcAddr split; CTU-13 holdout |
+
+Per-class support from `temporal_gru_forecaster_grouped_v2_evaluation.json` (scenario+source-host grouped holdout):
+
+| Stage | F1 | Support | Reliability |
+|---|---:|---:|---|
+| STAGE_0_BENIGN | 91.82% | 4 510 | ✅ Sufficient |
+| STAGE_1_RECONNAISSANCE | 0.00% | 325 | ⚠️ Feature collapse — zero precision |
+| STAGE_2_INITIAL_ACCESS | 42.76% | 2 021 | ✅ Sufficient |
+| STAGE_3_DISCOVERY | 0.00% | 0 | ❌ No holdout samples |
+| STAGE_4_C2_PERSISTENCE | 0.00% | 315 | ⚠️ Feature collapse — zero precision |
+| STAGE_5_LATERAL_MOVEMENT | 0.00% | 2 | ❌ Low sample — do not use as quality claim |
+| STAGE_6_EXFILTRATION | 46.74% | 1 143 | ✅ Sufficient |
+
+These numbers represent the **corrected** grouped-sequence evaluation (v2 candidate, not the deployed v1). The split prohibits boundary mixing between scenarios and source hosts. Discovery and Lateral Movement remain unreliable until more CTU-13 scenarios supply those stages. A Logistic Regression grouped baseline is required for a valid comparison before any model promotion.
+
+## 8. Secondary feature — DNS filtering pipeline
+
+The DNS pipeline supplies one telemetry path and may enforce filtering or containment. It is a supporting subsystem; the PS #26153 core is the sequence-based forecasting engine described above.
+
+## 9. Known limitations and roadmap
+
+- Packet-level aggregation foundation exists, but it is not yet connected to the offline training dataset, live ingestion, the deployed 16-feature extractor, or an expanded-schema retrain. Schema-versioning, availability checks, and a separately versioned candidate model are required before it can affect predictions.
+- Calibration uses CTU-13 only; a second independent dataset has not been validated.
+- The model is discrete-state, not a generative next-feature predictor.
+- Temperature scaling, persisted per-class reports, standardization, deduplication, and clearly segregated synthetic augmentation are pending.
+- A current baseline table requires a fresh benchmark and test pass before presentation.

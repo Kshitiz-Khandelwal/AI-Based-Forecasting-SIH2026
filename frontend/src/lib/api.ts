@@ -2,6 +2,7 @@ import type {
   FeedHealth,
   FeedbackAction,
   ModelMetadata,
+  ForecastingBenchmark,
   QueryResult,
   SimulatorType,
   StatsResponse,
@@ -57,6 +58,16 @@ export function getFeedHealth(): Promise<FeedHealth[]> {
 
 export function getModelMetadata(): Promise<ModelMetadata> {
   return fetchJson<ModelMetadata>("/api/v1/models/metadata");
+}
+
+export function getForecastingBenchmark(): Promise<ForecastingBenchmark> {
+  // This report is served by the Next.js application because it is a local,
+  // persisted evaluation artifact rather than a live gateway operation.
+  return fetch("/api/v1/models/forecasting-benchmark")
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      return res.json() as Promise<ForecastingBenchmark>;
+    });
 }
 
 export function getThresholds(): Promise<ThresholdConfig> {

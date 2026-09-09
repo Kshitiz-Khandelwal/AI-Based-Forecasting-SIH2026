@@ -10,6 +10,7 @@ import os
 import sys
 import time
 import random
+import json
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -47,6 +48,42 @@ except ImportError:
         STAGE_NAMES
     )
 
+try:
+    from services.forecasting_engine.evaluation_metrics import evaluation_summary, expected_calibration_error
+except ImportError:
+    from evaluation_metrics import evaluation_summary, expected_calibration_error
+
+
+def load_temperature(model_path: str) -> float:
+    model_stem = os.path.splitext(os.path.basename(model_path))[0]
+    calibration_path = os.path.join(os.path.dirname(model_path), f"{model_stem}_calibration.json")
+    try:
+        with open(calibration_path, "r", encoding="utf-8") as calibration_file:
+            calibration = json.load(calibration_file)
+            if calibration.get("model_file") not in (None, os.path.basename(model_path)):
+                return 1.0
+            temperature = float(calibration.get("temperature", 1.0))
+        return temperature if 0.05 <= temperature <= 10.0 else 1.0
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return 1.0
+
+
+def load_and_apply_scaler(model_path: str, *feature_sets):
+    """Apply a candidate's training-only scaler only when its model filename matches."""
+    scaler_path = os.path.join(os.path.dirname(model_path), f"{os.path.splitext(os.path.basename(model_path))[0]}_scaler.json")
+    try:
+        with open(scaler_path, "r", encoding="utf-8") as scaler_file:
+            payload = json.load(scaler_file)
+        if payload.get("model_file") != os.path.basename(model_path):
+            return feature_sets, False
+        mean = np.asarray(payload["mean"], dtype=np.float32)
+        scale = np.asarray(payload["scale"], dtype=np.float32)
+        if mean.shape != scale.shape or np.any(scale == 0):
+            return feature_sets, False
+        return tuple(((features - mean) / scale).astype(np.float32) for features in feature_sets), True
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return feature_sets, False
+
 
 def run_benchmark():
     print("=" * 85)
@@ -64,16 +101,20 @@ def run_benchmark():
     def featurize(d):
         feats = np.vstack([extract_flow_features(row) for _, row in d.iterrows()])
         labels = np.array([label_flow(row) for _, row in d.iterrows()], dtype=np.int64)
-        return feats, labels
+        groups = (d["Scenario"].fillna("unknown_scenario").astype(str) + "::" + d["SrcAddr"].fillna("unknown_source").astype(str)).to_numpy()
+        return feats, labels, groups
 
     print("[*] Extracting 16-dim temporal feature vectors across chronological partitions...")
-    X_train_mat, y_train_mat = featurize(train_df)
-    X_val_mat, y_val_mat = featurize(val_df)
-    X_test_mat, y_test_mat = featurize(test_df)
+    X_train_mat, y_train_mat, train_groups = featurize(train_df)
+    X_val_mat, y_val_mat, val_groups = featurize(val_df)
+    X_test_mat, y_test_mat, test_groups = featurize(test_df)
 
+    model_filename = os.environ.get("TEMPORAL_GRU_MODEL_FILENAME", "temporal_gru_forecaster.pt")
+    model_path = os.path.join("services", "forecasting_engine", "models", model_filename)
+    (X_train_mat, X_val_mat, X_test_mat), scaler_loaded = load_and_apply_scaler(model_path, X_train_mat, X_val_mat, X_test_mat)
     seq_len = 10
-    train_ds = TemporalSequenceDataset(X_train_mat, y_train_mat, seq_len, oversample=False)
-    test_ds = TemporalSequenceDataset(X_test_mat, y_test_mat, seq_len, oversample=False)
+    train_ds = TemporalSequenceDataset(X_train_mat, y_train_mat, train_groups, seq_len, oversample=False)
+    test_ds = TemporalSequenceDataset(X_test_mat, y_test_mat, test_groups, seq_len, oversample=False)
 
     X_train_seq = train_ds.X_seq.numpy()
     y_train_seq = train_ds.y_seq.numpy()
@@ -110,17 +151,20 @@ def run_benchmark():
     print("-" * 85)
     device = torch.device("cpu")
     gru_model = TemporalAttackGRU(input_dim=16, hidden_dim=64, num_classes=7).to(device)
-    model_path = os.path.join("services", "forecasting_engine", "models", "temporal_gru_forecaster.pt")
     if os.path.exists(model_path):
         gru_model.load_state_dict(torch.load(model_path, map_location=device))
         print(f"  [+] Loaded trained GRU weights from {model_path}")
     gru_model.eval()
+    temperature = load_temperature(model_path)
+    print(f"  [GRU] Temperature scaling: T={temperature:.4f}")
 
     test_tensor = torch.tensor(X_test_seq, dtype=torch.float32)
     t0_inf_gru = time.time()
     with torch.no_grad():
         gru_logits = gru_model(test_tensor)
-        gru_preds = torch.argmax(gru_logits, dim=1).numpy()
+        gru_probs_before = torch.softmax(gru_logits, dim=1).numpy()
+        gru_probs_after = torch.softmax(gru_logits / temperature, dim=1).numpy()
+        gru_preds = torch.argmax(gru_logits / temperature, dim=1).numpy()
     gru_inf_time = (time.time() - t0_inf_gru) / max(1, len(X_test_seq)) * 1000
 
     gru_p, gru_r, gru_f1, _ = precision_recall_fscore_support(y_test_seq, gru_preds, average='weighted', zero_division=0)
@@ -147,6 +191,22 @@ def run_benchmark():
     unique_present = np.unique(np.concatenate([y_test_seq, gru_preds]))
     names = [f"Stage {i}: {STAGE_NAMES[i]}" for i in unique_present]
     print(classification_report(y_test_seq, gru_preds, labels=unique_present, target_names=names, digits=4, zero_division=0))
+    benchmark_results = {
+        "dataset": data_path,
+        "split": "chronological_per_scenario_70_15_15",
+        "sequence_grouping": "Scenario + SrcAddr",
+        "model_artifact": model_filename,
+        "standardization": "training_only_standard_scaler" if scaler_loaded else "disabled",
+        "logistic_regression": evaluation_summary(y_test_seq, lr_preds, STAGE_NAMES),
+        "temporal_gru": evaluation_summary(y_test_seq, gru_preds, STAGE_NAMES),
+        "temperature": temperature,
+        "gru_ece_before": expected_calibration_error(gru_probs_before, y_test_seq),
+        "gru_ece_after": expected_calibration_error(gru_probs_after, y_test_seq),
+    }
+    results_path = os.path.join("services", "forecasting_engine", "models", f"{os.path.splitext(model_filename)[0]}_benchmark_results.json")
+    with open(results_path, "w", encoding="utf-8") as results_file:
+        json.dump(benchmark_results, results_file, indent=2)
+    print(f"  [+] Persisted per-class benchmark report to {results_path}")
 
     print("\n" + "-" * 85)
     print("5. MULTI-HORIZON K-STEP ATTACK TRAJECTORY ROLLOUTS (HELD-OUT TEST SEQUENCES)")

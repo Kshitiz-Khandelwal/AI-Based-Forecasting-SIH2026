@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Brain,
   Cpu,
@@ -18,8 +18,12 @@ import {
   ChevronRight,
   Database,
   Lock,
+  AlertTriangle,
+  LoaderCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getForecastingBenchmark } from "@/lib/api";
+import type { ForecastingBenchmark } from "@/lib/types";
 
 interface ModelComparison {
   architecture: string;
@@ -160,6 +164,14 @@ const RATIONALE_PILLARS = [
 
 export default function ModelsRationalePage() {
   const [selectedArch, setSelectedArch] = useState<string>("Random Forest (150 Trees)");
+  const [forecastingBenchmark, setForecastingBenchmark] = useState<ForecastingBenchmark | null>(null);
+  const [benchmarkError, setBenchmarkError] = useState(false);
+
+  useEffect(() => {
+    getForecastingBenchmark()
+      .then(setForecastingBenchmark)
+      .catch(() => setBenchmarkError(true));
+  }, []);
 
   return (
     <div className="w-full space-y-6 pb-12">
@@ -179,6 +191,48 @@ export default function ModelsRationalePage() {
           </p>
         </div>
       </div>
+
+      <section className="rounded-xl border border-violet-200 bg-violet-50/40 p-6 shadow-xs" aria-labelledby="forecasting-evaluation-heading">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-700 block font-mono">PS 26153 FORECASTING EVALUATION</span>
+        <h2 id="forecasting-evaluation-heading" className="text-base font-bold text-slate-900 mt-0.5 mb-2">Per-stage results from the corrected sequence evaluation</h2>
+        <p className="text-xs text-slate-600 mb-4">Only persisted reports built with scenario and source-host grouping are shown. Older flattened-window comparisons are intentionally excluded.</p>
+
+        {!forecastingBenchmark && !benchmarkError && (
+          <div className="flex items-center gap-2 rounded-lg border border-violet-100 bg-white/70 px-3 py-3 text-xs text-slate-600"><LoaderCircle className="h-4 w-4 animate-spin" /> Loading persisted evaluation report…</div>
+        )}
+
+        {(benchmarkError || (forecastingBenchmark && !forecastingBenchmark.available)) && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-900">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>{forecastingBenchmark?.message ?? "The persisted grouped evaluation could not be loaded. No forecasting metric is being claimed."}</span>
+          </div>
+        )}
+
+        {forecastingBenchmark?.available && forecastingBenchmark.metrics && (
+          <>
+            <div className="mb-4 flex flex-wrap gap-2 text-[10px] font-mono text-slate-600">
+              <span className="rounded-full border border-violet-200 bg-white px-2 py-1">{forecastingBenchmark.modelArtifact}</span>
+              <span className="rounded-full border border-violet-200 bg-white px-2 py-1">{forecastingBenchmark.sequenceGrouping}</span>
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800">{forecastingBenchmark.deploymentStatus}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
+              {[
+                ["Weighted F1", forecastingBenchmark.metrics.weighted.f1],
+                ["Precision", forecastingBenchmark.metrics.weighted.precision],
+                ["Recall", forecastingBenchmark.metrics.weighted.recall],
+                ["Benign FPR", forecastingBenchmark.metrics.benign_fpr],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="rounded-lg border border-violet-100 bg-white/70 px-3 py-2">
+                  <div className="text-[10px] font-mono uppercase text-slate-500">{label}</div>
+                  <div className="mt-0.5 font-mono text-sm font-bold text-slate-900">{(Number(value) * 100).toFixed(2)}%</div>
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-violet-100 text-slate-500 font-mono"><th className="px-3 py-2">Forecast stage</th><th className="px-3 py-2">Precision</th><th className="px-3 py-2">Recall</th><th className="px-3 py-2">F1</th><th className="px-3 py-2">Holdout samples</th><th className="px-3 py-2">Interpretation</th></tr></thead><tbody className="divide-y divide-violet-100">{Object.entries(forecastingBenchmark.metrics.per_class).map(([stage, metric]) => { const lowSample = metric.reliability.startsWith("low-sample"); return <tr key={stage} className={lowSample ? "bg-amber-50/50" : ""}><td className="px-3 py-3 font-semibold text-slate-800">{stage.replace("STAGE_", "Stage ").replaceAll("_", " ")}</td><td className="px-3 py-3 font-mono">{(metric.precision * 100).toFixed(2)}%</td><td className="px-3 py-3 font-mono">{(metric.recall * 100).toFixed(2)}%</td><td className="px-3 py-3 font-mono">{(metric.f1 * 100).toFixed(2)}%</td><td className="px-3 py-3 font-mono">{metric.support}</td><td className="px-3 py-3">{lowSample ? <span className="inline-flex items-center gap-1 text-amber-800"><AlertTriangle className="h-3 w-3" /> Low sample — do not use as a quality claim</span> : <span className="text-slate-600">{metric.reliability}</span>}</td></tr>; })}</tbody></table></div>
+            <p className="mt-4 text-[11px] font-mono text-slate-500">Source: persisted grouped holdout report · split: {forecastingBenchmark.split ?? "not recorded"}. This experimental artifact is not the deployed v1 model.</p>
+          </>
+        )}
+      </section>
 
       {/* Rationale Pillars */}
       <div className="space-y-5">

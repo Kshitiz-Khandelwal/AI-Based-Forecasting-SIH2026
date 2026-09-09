@@ -14,9 +14,20 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from services.flow_ingest.network_flow_collector import NetworkFlowCollector, FlowRecord
 from services.forecasting_engine.attack_forecaster import AttackForecastingEngine, STAGES
+from services.forecasting_engine.train_temporal_gru import TemporalSequenceDataset
 
 
 class TestAttackForecasting(unittest.TestCase):
+
+    def test_sequence_windows_do_not_cross_group_boundaries(self):
+        features = [[float(i)] for i in range(12)]
+        labels = list(range(12))
+        groups = ["scenario-a::host-1"] * 6 + ["scenario-b::host-2"] * 6
+        dataset = TemporalSequenceDataset(features, labels, groups, seq_len=3)
+        # Each six-flow group supplies 3 windows; a flattened builder would make 9.
+        self.assertEqual(len(dataset), 6)
+        for sequence, _ in dataset:
+            self.assertLess(float(sequence[-1, 0]) - float(sequence[0, 0]), 3.1)
 
     def test_flow_collector_ingestion(self):
         collector = NetworkFlowCollector(session_window_sec=60.0)

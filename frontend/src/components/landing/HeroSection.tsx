@@ -180,7 +180,7 @@ export function HeroSection() {
         >
           <span className="h-2 w-2 rounded-full bg-emerald-500 radar-beacon" />
           <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-            Real-Time Explainable DNS Threat Defense
+            Explainable Network Attack Forecasting
           </span>
         </motion.div>
 
@@ -193,9 +193,9 @@ export function HeroSection() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.05 }}
             >
-              Every DNS query scored.
+              Forecast the attacker’s next move.
               <br />
-              <span className="text-emerald-600">Every verdict explained.</span>
+              <span className="text-emerald-600">Before compromise.</span>
             </motion.h1>
 
             <motion.p
@@ -204,9 +204,9 @@ export function HeroSection() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.12 }}
             >
-              DNS Shield filters zero-day threats through a 7-stage pipeline — hot cache, threat intel, 
-              TreeSHAP lexical ML, behavioral sliding windows, geo-intel, active response, and forensics — 
-              delivering an instant, fully-auditable <strong>ALLOW</strong>, <strong>FLAG</strong>, or <strong>BLOCK</strong>.
+              DNS Shield X-Forecast learns attack-stage transitions from network telemetry, projects the
+              MITRE ATT&amp;CK kill chain 15–60 minutes ahead, and explains the signals behind each forecast.
+              DNS filtering remains a supporting telemetry and response path.
             </motion.p>
 
             {/* Live Interactive Scanner Input */}

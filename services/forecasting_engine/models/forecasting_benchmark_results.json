@@ -1,0 +1,126 @@
+{
+  "dataset": "data\\ctu13_multistage_flows.csv",
+  "model_artifact": "temporal_gru_forecaster_v2.pt (experimental; v1 remains deployed)",
+  "split": "chronological_per_scenario_70_15_15",
+  "logistic_regression": {
+    "weighted": {
+      "precision": 0.7795484656187712,
+      "recall": 0.7497790277219767,
+      "f1": 0.7603003816289774
+    },
+    "benign_fpr": 0.11781405251951739,
+    "per_class": {
+      "STAGE_0_BENIGN": {
+        "precision": 0.9684456564082586,
+        "recall": 0.8821859474804826,
+        "f1": 0.92330547818013,
+        "support": 8454,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_1_RECONNAISSANCE": {
+        "precision": 0.7808641975308642,
+        "recall": 0.7228571428571429,
+        "f1": 0.7507418397626113,
+        "support": 350,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_2_INITIAL_ACCESS": {
+        "precision": 0.381640625,
+        "recall": 0.4561157796451914,
+        "f1": 0.41556784347086345,
+        "support": 2142,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_3_DISCOVERY": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0,
+        "reliability": "low-sample \u2014 metric not statistically reliable"
+      },
+      "STAGE_4_C2_PERSISTENCE": {
+        "precision": 0.037037037037037035,
+        "recall": 0.003105590062111801,
+        "f1": 0.0057306590257879654,
+        "support": 322,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_5_LATERAL_MOVEMENT": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 2,
+        "reliability": "low-sample \u2014 metric not statistically reliable"
+      },
+      "STAGE_6_EXFILTRATION": {
+        "precision": 0.3502454991816694,
+        "recall": 0.5463829787234042,
+        "f1": 0.42686170212765956,
+        "support": 1175,
+        "reliability": "sufficient-support"
+      }
+    }
+  },
+  "temporal_gru": {
+    "weighted": {
+      "precision": 0.7307126805262365,
+      "recall": 0.7599035757332262,
+      "f1": 0.7201159966616234
+    },
+    "benign_fpr": 0.05689614383723681,
+    "per_class": {
+      "STAGE_0_BENIGN": {
+        "precision": 0.9548502994011976,
+        "recall": 0.9431038561627632,
+        "f1": 0.9489407283980005,
+        "support": 8454,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_1_RECONNAISSANCE": {
+        "precision": 0.5915492957746479,
+        "recall": 0.72,
+        "f1": 0.6494845360824743,
+        "support": 350,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_2_INITIAL_ACCESS": {
+        "precision": 0.15073529411764705,
+        "recall": 0.019140989729225025,
+        "f1": 0.03396851698425849,
+        "support": 2142,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_3_DISCOVERY": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0,
+        "reliability": "low-sample \u2014 metric not statistically reliable"
+      },
+      "STAGE_4_C2_PERSISTENCE": {
+        "precision": 0.23880597014925373,
+        "recall": 0.049689440993788817,
+        "f1": 0.08226221079691516,
+        "support": 322,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_5_LATERAL_MOVEMENT": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 2,
+        "reliability": "low-sample \u2014 metric not statistically reliable"
+      },
+      "STAGE_6_EXFILTRATION": {
+        "precision": 0.35285285285285284,
+        "recall": 1.0,
+        "f1": 0.5216426193118757,
+        "support": 1175,
+        "reliability": "sufficient-support"
+      }
+    }
+  },
+  "temperature": 1.8831855058670044,
+  "gru_ece_before": 0.16197140194795945,
+  "gru_ece_after": 0.09602101612828641
+}

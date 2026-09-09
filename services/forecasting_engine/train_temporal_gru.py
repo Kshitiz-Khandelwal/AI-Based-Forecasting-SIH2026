@@ -11,12 +11,14 @@ import os
 import sys
 import time
 import random
+import json
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report, precision_recall_fscore_support, confusion_matrix
+from sklearn.preprocessing import StandardScaler
 
 SEED = 42
 random.seed(SEED)
@@ -29,6 +31,11 @@ try:
     from services.forecasting_engine.temporal_feature_extractor import extract_flow_features, FEATURE_NAMES
 except ImportError:
     from temporal_feature_extractor import extract_flow_features, FEATURE_NAMES
+
+try:
+    from services.forecasting_engine.evaluation_metrics import evaluation_summary, expected_calibration_error
+except ImportError:
+    from evaluation_metrics import evaluation_summary, expected_calibration_error
 
 STAGE_MAP = {
     "STAGE_0_BENIGN": 0,
@@ -113,11 +120,31 @@ def chronological_split_per_scenario(df, ratios=(0.70, 0.15, 0.15)):
 
 
 class TemporalSequenceDataset(Dataset):
-    def __init__(self, features, labels, seq_len=10, oversample=False):
+    def __init__(self, features, labels, group_ids=None, seq_len=10, oversample=False):
+        """Create windows strictly within an ordered scenario/source-host group.
+
+        A window cannot cross a scenario or host boundary.  This avoids creating
+        artificial attack histories from unrelated CTU-13 flows after partitions
+        have been concatenated.
+        """
+        features = np.asarray(features, dtype=np.float32)
+        labels = np.asarray(labels, dtype=np.int64)
+        if group_ids is None:
+            group_ids = np.zeros(len(features), dtype=np.int64)
+        if len(group_ids) != len(features):
+            raise ValueError("group_ids must contain one value for every feature row")
         X_seqs, y_seqs = [], []
-        for i in range(len(features) - seq_len):
-            X_seqs.append(features[i:i + seq_len])
-            y_seqs.append(labels[i + seq_len])
+        group_ids = np.asarray(group_ids)
+        for group_id in np.unique(group_ids):
+            group_indices = np.flatnonzero(group_ids == group_id)
+            for start in range(len(group_indices) - seq_len):
+                window_indices = group_indices[start:start + seq_len]
+                target_index = group_indices[start + seq_len]
+                X_seqs.append(features[window_indices])
+                y_seqs.append(labels[target_index])
+
+        if not X_seqs:
+            raise ValueError("No complete sequences: each scenario/source-host group needs more than seq_len flows")
 
         if oversample:
             # Oversample minority attack stages WITHIN train split only.
@@ -168,6 +195,31 @@ class TemporalAttackGRU(nn.Module):
         return self.head(self.ln(out[:, -1, :]))
 
 
+def fit_temperature(logits: torch.Tensor, targets: torch.Tensor) -> float:
+    """Fit a single validation-only temperature using NLL minimization."""
+    temperature = torch.ones(1, device=logits.device, requires_grad=True)
+    optimizer = torch.optim.LBFGS([temperature], lr=0.01, max_iter=50, line_search_fn="strong_wolfe")
+    criterion = nn.CrossEntropyLoss()
+
+    def closure():
+        optimizer.zero_grad()
+        loss = criterion(logits / temperature.clamp(min=0.05, max=10.0), targets)
+        loss.backward()
+        return loss
+
+    optimizer.step(closure)
+    return float(temperature.detach().clamp(min=0.05, max=10.0).item())
+
+
+def fit_and_apply_standard_scaler(train_features, validation_features, test_features, enabled: bool):
+    """Fit on training rows only, preventing validation/test distribution leakage."""
+    if not enabled:
+        return train_features, validation_features, test_features, None
+    scaler = StandardScaler()
+    train_scaled = scaler.fit_transform(train_features).astype(np.float32)
+    return train_scaled, scaler.transform(validation_features).astype(np.float32), scaler.transform(test_features).astype(np.float32), scaler
+
+
 def main():
     # Re-seed inside main() so 3 independent process runs are deterministic.
     random.seed(SEED)
@@ -194,11 +246,14 @@ def main():
     def featurize(d):
         feats = np.vstack([extract_flow_features(row) for _, row in d.iterrows()])
         labels = np.array([label_flow(row) for _, row in d.iterrows()], dtype=np.int64)
-        return feats, labels
+        groups = (d["Scenario"].fillna("unknown_scenario").astype(str) + "::" + d["SrcAddr"].fillna("unknown_source").astype(str)).to_numpy()
+        return feats, labels, groups
 
-    X_train, y_train = featurize(train_df)
-    X_val, y_val = featurize(val_df)
-    X_test, y_test = featurize(test_df)
+    X_train, y_train, train_groups = featurize(train_df)
+    X_val, y_val, val_groups = featurize(val_df)
+    X_test, y_test, test_groups = featurize(test_df)
+    scaler_enabled = os.environ.get("TEMPORAL_GRU_USE_STANDARD_SCALER", "0") == "1"
+    X_train, X_val, X_test, scaler = fit_and_apply_standard_scaler(X_train, X_val, X_test, scaler_enabled)
 
     print(f"\n--- Stage Distribution Across Partitions (after label-priority fix) ---")
     train_counts = dict(zip(*np.unique(y_train, return_counts=True)))
@@ -219,11 +274,11 @@ def main():
 
     seq_len = 10
     # Master Prompt 4: oversample minority stages in TRAIN only
-    train_ds = TemporalSequenceDataset(X_train, y_train, seq_len, oversample=True)
-    val_ds = TemporalSequenceDataset(X_val, y_val, seq_len, oversample=False)
-    test_ds = TemporalSequenceDataset(X_test, y_test, seq_len, oversample=False)
+    train_ds = TemporalSequenceDataset(X_train, y_train, train_groups, seq_len, oversample=True)
+    val_ds = TemporalSequenceDataset(X_val, y_val, val_groups, seq_len, oversample=False)
+    test_ds = TemporalSequenceDataset(X_test, y_test, test_groups, seq_len, oversample=False)
 
-    print(f"\n[+] Oversampled Train Sequences: {len(train_ds)} (raw: {len(X_train) - seq_len})")
+    print(f"\n[+] Oversampled Train Sequences: {len(train_ds)} (scenario/source-host isolated)")
 
     # Master Prompt 4: DataLoader generator pinned for shuffle determinism
     _gen = torch.Generator()
@@ -248,7 +303,14 @@ def main():
     best_val_loss = float("inf")
     model_dir = os.path.join("services", "forecasting_engine", "models")
     os.makedirs(model_dir, exist_ok=True)
-    model_path = os.path.join(model_dir, "temporal_gru_forecaster.pt")
+    model_filename = os.environ.get("TEMPORAL_GRU_MODEL_FILENAME", "temporal_gru_forecaster.pt")
+    model_path = os.path.join(model_dir, model_filename)
+    artifact_stem = os.path.splitext(model_filename)[0]
+    if scaler is not None:
+        scaler_path = os.path.join(model_dir, f"{artifact_stem}_scaler.json")
+        with open(scaler_path, "w", encoding="utf-8") as scaler_file:
+            json.dump({"model_file": model_filename, "fit_split": "training_only", "mean": scaler.mean_.tolist(), "scale": scaler.scale_.tolist()}, scaler_file, indent=2)
+        print(f"[+] Saved training-only feature scaler to {scaler_path}")
 
     for epoch in range(1, 11):
         t0 = time.time()
@@ -283,10 +345,26 @@ def main():
     model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
     model.eval()
 
+    # Temperature is learned only from validation logits; test data remains untouched.
+    val_logits, val_targets = [], []
+    with torch.no_grad():
+        for X_b, y_b in val_loader:
+            val_logits.append(model(X_b))
+            val_targets.append(y_b)
+    val_logits_tensor = torch.cat(val_logits)
+    val_targets_tensor = torch.cat(val_targets)
+    temperature = fit_temperature(val_logits_tensor, val_targets_tensor)
+    val_probs_before = torch.softmax(val_logits_tensor, dim=1).cpu().numpy()
+    val_probs_after = torch.softmax(val_logits_tensor / temperature, dim=1).cpu().numpy()
+    calibration_path = os.path.join(model_dir, f"{artifact_stem}_calibration.json")
+    with open(calibration_path, "w", encoding="utf-8") as calibration_file:
+        json.dump({"model_file": os.path.basename(model_path), "temperature": temperature, "fit_split": "validation", "ece_before": expected_calibration_error(val_probs_before, val_targets_tensor.numpy()), "ece_after": expected_calibration_error(val_probs_after, val_targets_tensor.numpy())}, calibration_file, indent=2)
+    print(f"[+] Saved validation-only temperature calibration to {calibration_path} (T={temperature:.4f})")
+
     all_preds, all_targets = [], []
     with torch.no_grad():
         for X_b, y_b in test_loader:
-            logits = model(X_b)
+            logits = model(X_b) / temperature
             all_preds.extend(torch.argmax(logits, dim=1).numpy())
             all_targets.extend(y_b.numpy())
     all_preds, all_targets = np.array(all_preds), np.array(all_targets)
@@ -309,6 +387,10 @@ def main():
     benign_fp = cm[0, 1:].sum()
     fpr = (benign_fp / max(1, benign_total)) if benign_total > 0 else 0.0
     print(f"Benign FPR: {fpr*100:.4f}% ({benign_fp} false alarms / {benign_total} benign test flows)")
+    results_path = os.path.join(model_dir, f"{artifact_stem}_evaluation.json")
+    with open(results_path, "w", encoding="utf-8") as results_file:
+        json.dump({"dataset": data_path, "split": "chronological_per_scenario_70_15_15", "sequence_grouping": "Scenario + SrcAddr", "standardization": "training_only_standard_scaler" if scaler is not None else "disabled", "temperature": temperature, "evaluation": evaluation_summary(all_targets, all_preds, STAGE_NAMES)}, results_file, indent=2)
+    print(f"[+] Saved per-class held-out evaluation to {results_path}")
     print("=" * 80)
 
     # Per-stage train support table (for the final report)

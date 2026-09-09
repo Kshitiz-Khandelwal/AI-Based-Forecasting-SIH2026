@@ -70,6 +70,30 @@ export interface ModelMetadata {
   holdout_size: number;
 }
 
+export interface ForecastingClassMetric {
+  precision: number;
+  recall: number;
+  f1: number;
+  support: number;
+  reliability: string;
+}
+
+export interface ForecastingBenchmark {
+  available: boolean;
+  source?: string;
+  modelArtifact?: string;
+  split?: string;
+  sequenceGrouping?: string;
+  deploymentStatus?: string;
+  evaluatedAt?: string;
+  metrics?: {
+    weighted: { precision: number; recall: number; f1: number };
+    benign_fpr: number;
+    per_class: Record<string, ForecastingClassMetric>;
+  };
+  message?: string;
+}
+
 export interface ThresholdConfig {
   allow_max: number;
   flag_max: number;

@@ -19,6 +19,7 @@ import torch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from services.forecasting_engine.temporal_feature_extractor import extract_flow_features, FEATURE_NAMES
 from services.forecasting_engine.train_temporal_gru import TemporalAttackGRU, STAGE_MAP, STAGE_NAMES
+from services.forecasting_engine.packet_feature_extractor import PacketFeatureAccumulator
 
 STAGE_METADATA = {
     "STAGE_0_BENIGN": {"label": "Benign Baseline", "severity": "NONE", "color": "#10b981", "tactic": "Normal Operations"},
@@ -33,10 +34,16 @@ STAGE_METADATA = {
 STAGE_DURATIONS = [0.0, 15.0, 12.0, 10.0, 12.0, 8.0, 0.0]
 
 def parse_pcap_to_flows(pcap_path: str):
-    """Parse raw PCAP file into structured flow dictionary list."""
+    """Parse raw PCAP into packet records enriched with future-schema features.
+
+    The ``packet_*`` fields are retained in output for future model training.
+    ``extract_flow_features`` intentionally ignores them until a separately
+    benchmarked replacement model is approved.
+    """
     import dpkt
     import socket
     flows = []
+    accumulator = PacketFeatureAccumulator()
     with open(pcap_path, 'rb') as f:
         pcap = dpkt.pcap.Reader(f)
         for ts, buf in pcap:
@@ -53,8 +60,21 @@ def parse_pcap_to_flows(pcap_path: str):
                 if hasattr(ip.data, 'sport'):
                     sport = ip.data.sport
                     dport = ip.data.dport
+                transport = ip.data
+                is_tcp = isinstance(transport, dpkt.tcp.TCP)
+                tcp_window = transport.win if is_tcp else None
+                tcp_sequence = transport.seq if is_tcp else None
+                payload = getattr(transport, "data", b"")
+                payload_size = len(payload) if isinstance(payload, (bytes, bytearray)) else 0
+                # IP.MF is the "more fragments" bit; offset marks non-first pieces.
+                is_fragment = bool((ip.off & dpkt.ip.IP_MF) or (ip.off & dpkt.ip.IP_OFFMASK))
+                accumulator.add_packet(
+                    src_ip=src_ip, dst_ip=dst_ip, protocol=proto, sport=sport, dport=dport,
+                    ttl=ip.ttl, tcp_window=tcp_window, tcp_sequence=tcp_sequence,
+                    payload_size=payload_size, is_fragment=is_fragment,
+                )
                     
-                flows.append({
+                record = {
                     "StartTime": ts,
                     "Dur": 0.01,
                     "Proto": proto,
@@ -65,9 +85,16 @@ def parse_pcap_to_flows(pcap_path: str):
                     "TotPkts": 1,
                     "TotBytes": len(buf),
                     "SrcBytes": len(buf),
-                })
+                }
+                # Enrich after the entire capture has been read so every record
+                # for a flow sees its final packet-level aggregates.
+                record["_packet_feature_key"] = (src_ip, dst_ip, proto, sport, dport)
+                flows.append(record)
             except Exception:
                 continue
+    for record in flows:
+        src_ip, dst_ip, proto, sport, dport = record.pop("_packet_feature_key")
+        record.update(accumulator.flow_features(src_ip, dst_ip, proto, sport, dport))
     return pd.DataFrame(flows)
 
 def run_offline_forecast(input_file: str, host_filter: str = None):
