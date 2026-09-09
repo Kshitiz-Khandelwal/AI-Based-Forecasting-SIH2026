@@ -85,6 +85,29 @@ def load_and_apply_scaler(model_path: str, *feature_sets):
         return feature_sets, False
 
 
+def build_collapse_summary(cm: np.ndarray, stage_names, model_label: str) -> dict:
+    """Analyze confusion matrix for majority-class (BENIGN) collapse across stages."""
+    summary = {}
+    for i, name in enumerate(stage_names):
+        total = int(cm[i, :].sum())
+        pred_benign = int(cm[i, 0])
+        pred_correct = int(cm[i, i])
+        pct_benign = round((pred_benign / total) * 100, 2) if total > 0 else 0.0
+        pct_correct = round((pred_correct / total) * 100, 2) if total > 0 else 0.0
+        collapsed = bool(i != 0 and total > 0 and pct_benign >= 50.0)
+        summary[name] = {
+            "model": model_label,
+            "total_test_samples": total,
+            "predicted_benign": pred_benign,
+            "predicted_benign_pct": pct_benign,
+            "predicted_correct": pred_correct,
+            "recall_pct": pct_correct,
+            "collapsed_to_benign": collapsed,
+            "status": "COLLAPSED_TO_BENIGN" if collapsed else ("ROBUST" if pct_correct >= 70 else "PARTIAL" if total > 0 else "NO_SAMPLES"),
+        }
+    return summary
+
+
 def run_benchmark():
     print("=" * 85)
     print("PS 26153: REPRODUCIBLE ML BENCHMARK & MULTI-HORIZON EVALUATION (SEEDED)")
@@ -112,9 +135,14 @@ def run_benchmark():
     model_filename = os.environ.get("TEMPORAL_GRU_MODEL_FILENAME", "temporal_gru_forecaster.pt")
     model_path = os.path.join("services", "forecasting_engine", "models", model_filename)
     (X_train_mat, X_val_mat, X_test_mat), scaler_loaded = load_and_apply_scaler(model_path, X_train_mat, X_val_mat, X_test_mat)
-    seq_len = 10
-    train_ds = TemporalSequenceDataset(X_train_mat, y_train_mat, train_groups, seq_len, oversample=False)
-    test_ds = TemporalSequenceDataset(X_test_mat, y_test_mat, test_groups, seq_len, oversample=False)
+    # seq_len must match the value used during training of the target model.
+    seq_len = int(os.environ.get("TEMPORAL_GRU_SEQ_LEN", "10"))
+    label_strategy = os.environ.get("TEMPORAL_GRU_LABEL_STRATEGY", "next")
+    print(f"[CONFIG] seq_len={seq_len} | label_strategy={label_strategy!r} | model={model_filename}")
+    train_ds = TemporalSequenceDataset(X_train_mat, y_train_mat, train_groups, seq_len, oversample=False,
+                                       label_strategy=label_strategy)
+    test_ds = TemporalSequenceDataset(X_test_mat, y_test_mat, test_groups, seq_len, oversample=False,
+                                      label_strategy=label_strategy)
 
     X_train_seq = train_ds.X_seq.numpy()
     y_train_seq = train_ds.y_seq.numpy()
@@ -191,14 +219,37 @@ def run_benchmark():
     unique_present = np.unique(np.concatenate([y_test_seq, gru_preds]))
     names = [f"Stage {i}: {STAGE_NAMES[i]}" for i in unique_present]
     print(classification_report(y_test_seq, gru_preds, labels=unique_present, target_names=names, digits=4, zero_division=0))
+
+    print("\n" + "-" * 85)
+    print("4b. MAJORITY-CLASS COLLAPSE DIAGNOSTIC (COLLAPSED TO BENIGN)")
+    print("-" * 85)
+    print(f"{'Attack Stage':<28} | {'Total':<6} | {'GRU->BENIGN':<13} | {'GRU Recall':<11} | {'LR->BENIGN':<13} | {'LR Recall':<10}")
+    print("-" * 85)
+    for i in range(1, len(STAGE_NAMES)):
+        sname = STAGE_NAMES[i]
+        n_tot = int(gru_cm[i, :].sum())
+        if n_tot == 0:
+            continue
+        g_b = int(gru_cm[i, 0])
+        g_r = (int(gru_cm[i, i]) / n_tot) * 100
+        l_b = int(lr_cm[i, 0])
+        l_r = (int(lr_cm[i, i]) / n_tot) * 100
+        print(f"{sname:<28} | {n_tot:>6} | {g_b:>4} ({g_b/n_tot*100:>4.1f}%) | {g_r:>9.2f}% | {l_b:>4} ({l_b/n_tot*100:>4.1f}%) | {l_r:>8.2f}%")
+    print("-" * 85)
     benchmark_results = {
         "dataset": data_path,
         "split": "chronological_per_scenario_70_15_15",
         "sequence_grouping": "Scenario + SrcAddr",
+        "seq_len": seq_len,
+        "label_strategy": label_strategy,
         "model_artifact": model_filename,
         "standardization": "training_only_standard_scaler" if scaler_loaded else "disabled",
         "logistic_regression": evaluation_summary(y_test_seq, lr_preds, STAGE_NAMES),
+        "logistic_regression_confusion_matrix": lr_cm.tolist(),
+        "logistic_regression_collapse_summary": build_collapse_summary(lr_cm, STAGE_NAMES, "LR"),
         "temporal_gru": evaluation_summary(y_test_seq, gru_preds, STAGE_NAMES),
+        "temporal_gru_confusion_matrix": gru_cm.tolist(),
+        "temporal_gru_collapse_summary": build_collapse_summary(gru_cm, STAGE_NAMES, "GRU"),
         "temperature": temperature,
         "gru_ece_before": expected_calibration_error(gru_probs_before, y_test_seq),
         "gru_ece_after": expected_calibration_error(gru_probs_after, y_test_seq),

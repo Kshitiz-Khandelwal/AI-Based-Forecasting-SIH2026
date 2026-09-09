@@ -1,0 +1,7 @@
+{
+  "model_file": "temporal_gru_forecaster_grouped_seqlen5_v3.pt",
+  "temperature": 0.2599971294403076,
+  "fit_split": "validation",
+  "ece_before": 0.04410633502204659,
+  "ece_after": 0.0006320737821146141
+}

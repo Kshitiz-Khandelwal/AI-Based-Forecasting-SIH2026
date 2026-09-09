@@ -1,0 +1,404 @@
+{
+  "dataset": "data\\ctu13_multistage_flows.csv",
+  "split": "chronological_per_scenario_70_15_15",
+  "sequence_grouping": "Scenario + SrcAddr",
+  "seq_len": 5,
+  "label_strategy": "majority",
+  "model_artifact": "temporal_gru_forecaster_grouped_seqlen5_majority_v3.pt",
+  "standardization": "disabled",
+  "logistic_regression": {
+    "weighted": {
+      "precision": 0.8574308864530907,
+      "recall": 0.8817339585954478,
+      "f1": 0.8517503408225657
+    },
+    "benign_fpr": 0.07335114033285392,
+    "per_class": {
+      "STAGE_0_BENIGN": {
+        "precision": 0.9190951701650704,
+        "recall": 0.926648859667146,
+        "f1": 0.9228565582156742,
+        "support": 4867,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_1_RECONNAISSANCE": {
+        "precision": 0.9,
+        "recall": 0.05217391304347826,
+        "f1": 0.09863013698630137,
+        "support": 345,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_2_INITIAL_ACCESS": {
+        "precision": 0.7899271040424122,
+        "recall": 0.9834983498349835,
+        "f1": 0.8761484748254318,
+        "support": 2424,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_3_DISCOVERY": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0,
+        "reliability": "low-sample \u2014 metric not statistically reliable"
+      },
+      "STAGE_4_C2_PERSISTENCE": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 308,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_5_LATERAL_MOVEMENT": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0,
+        "reliability": "low-sample \u2014 metric not statistically reliable"
+      },
+      "STAGE_6_EXFILTRATION": {
+        "precision": 0.9987468671679198,
+        "recall": 0.9974968710888611,
+        "f1": 0.9981214777708203,
+        "support": 799,
+        "reliability": "sufficient-support"
+      }
+    }
+  },
+  "logistic_regression_confusion_matrix": [
+    [
+      4510,
+      2,
+      354,
+      0,
+      0,
+      0,
+      1
+    ],
+    [
+      62,
+      18,
+      265,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      40,
+      0,
+      2384,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      295,
+      0,
+      13,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      2,
+      0,
+      0,
+      0,
+      797
+    ]
+  ],
+  "logistic_regression_collapse_summary": {
+    "STAGE_0_BENIGN": {
+      "model": "LR",
+      "total_test_samples": 4867,
+      "predicted_benign": 4510,
+      "predicted_benign_pct": 92.66,
+      "predicted_correct": 4510,
+      "recall_pct": 92.66,
+      "collapsed_to_benign": false,
+      "status": "ROBUST"
+    },
+    "STAGE_1_RECONNAISSANCE": {
+      "model": "LR",
+      "total_test_samples": 345,
+      "predicted_benign": 62,
+      "predicted_benign_pct": 17.97,
+      "predicted_correct": 18,
+      "recall_pct": 5.22,
+      "collapsed_to_benign": false,
+      "status": "PARTIAL"
+    },
+    "STAGE_2_INITIAL_ACCESS": {
+      "model": "LR",
+      "total_test_samples": 2424,
+      "predicted_benign": 40,
+      "predicted_benign_pct": 1.65,
+      "predicted_correct": 2384,
+      "recall_pct": 98.35,
+      "collapsed_to_benign": false,
+      "status": "ROBUST"
+    },
+    "STAGE_3_DISCOVERY": {
+      "model": "LR",
+      "total_test_samples": 0,
+      "predicted_benign": 0,
+      "predicted_benign_pct": 0.0,
+      "predicted_correct": 0,
+      "recall_pct": 0.0,
+      "collapsed_to_benign": false,
+      "status": "NO_SAMPLES"
+    },
+    "STAGE_4_C2_PERSISTENCE": {
+      "model": "LR",
+      "total_test_samples": 308,
+      "predicted_benign": 295,
+      "predicted_benign_pct": 95.78,
+      "predicted_correct": 0,
+      "recall_pct": 0.0,
+      "collapsed_to_benign": true,
+      "status": "COLLAPSED_TO_BENIGN"
+    },
+    "STAGE_5_LATERAL_MOVEMENT": {
+      "model": "LR",
+      "total_test_samples": 0,
+      "predicted_benign": 0,
+      "predicted_benign_pct": 0.0,
+      "predicted_correct": 0,
+      "recall_pct": 0.0,
+      "collapsed_to_benign": false,
+      "status": "NO_SAMPLES"
+    },
+    "STAGE_6_EXFILTRATION": {
+      "model": "LR",
+      "total_test_samples": 799,
+      "predicted_benign": 0,
+      "predicted_benign_pct": 0.0,
+      "predicted_correct": 797,
+      "recall_pct": 99.75,
+      "collapsed_to_benign": false,
+      "status": "ROBUST"
+    }
+  },
+  "temporal_gru": {
+    "weighted": {
+      "precision": 0.8537190780049337,
+      "recall": 0.9178771588699531,
+      "f1": 0.8832956480026135
+    },
+    "benign_fpr": 0.0,
+    "per_class": {
+      "STAGE_0_BENIGN": {
+        "precision": 0.8715974212034384,
+        "recall": 1.0,
+        "f1": 0.9313941249641182,
+        "support": 4867,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_1_RECONNAISSANCE": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 345,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_2_INITIAL_ACCESS": {
+        "precision": 1.0,
+        "recall": 0.9731848184818482,
+        "f1": 0.986410202801589,
+        "support": 2424,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_3_DISCOVERY": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0,
+        "reliability": "low-sample \u2014 metric not statistically reliable"
+      },
+      "STAGE_4_C2_PERSISTENCE": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 308,
+        "reliability": "sufficient-support"
+      },
+      "STAGE_5_LATERAL_MOVEMENT": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0,
+        "reliability": "low-sample \u2014 metric not statistically reliable"
+      },
+      "STAGE_6_EXFILTRATION": {
+        "precision": 0.99875,
+        "recall": 1.0,
+        "f1": 0.9993746091307066,
+        "support": 799,
+        "reliability": "sufficient-support"
+      }
+    }
+  },
+  "temporal_gru_confusion_matrix": [
+    [
+      4867,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      345,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      64,
+      0,
+      2359,
+      0,
+      0,
+      0,
+      1
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      308,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      799
+    ]
+  ],
+  "temporal_gru_collapse_summary": {
+    "STAGE_0_BENIGN": {
+      "model": "GRU",
+      "total_test_samples": 4867,
+      "predicted_benign": 4867,
+      "predicted_benign_pct": 100.0,
+      "predicted_correct": 4867,
+      "recall_pct": 100.0,
+      "collapsed_to_benign": false,
+      "status": "ROBUST"
+    },
+    "STAGE_1_RECONNAISSANCE": {
+      "model": "GRU",
+      "total_test_samples": 345,
+      "predicted_benign": 345,
+      "predicted_benign_pct": 100.0,
+      "predicted_correct": 0,
+      "recall_pct": 0.0,
+      "collapsed_to_benign": true,
+      "status": "COLLAPSED_TO_BENIGN"
+    },
+    "STAGE_2_INITIAL_ACCESS": {
+      "model": "GRU",
+      "total_test_samples": 2424,
+      "predicted_benign": 64,
+      "predicted_benign_pct": 2.64,
+      "predicted_correct": 2359,
+      "recall_pct": 97.32,
+      "collapsed_to_benign": false,
+      "status": "ROBUST"
+    },
+    "STAGE_3_DISCOVERY": {
+      "model": "GRU",
+      "total_test_samples": 0,
+      "predicted_benign": 0,
+      "predicted_benign_pct": 0.0,
+      "predicted_correct": 0,
+      "recall_pct": 0.0,
+      "collapsed_to_benign": false,
+      "status": "NO_SAMPLES"
+    },
+    "STAGE_4_C2_PERSISTENCE": {
+      "model": "GRU",
+      "total_test_samples": 308,
+      "predicted_benign": 308,
+      "predicted_benign_pct": 100.0,
+      "predicted_correct": 0,
+      "recall_pct": 0.0,
+      "collapsed_to_benign": true,
+      "status": "COLLAPSED_TO_BENIGN"
+    },
+    "STAGE_5_LATERAL_MOVEMENT": {
+      "model": "GRU",
+      "total_test_samples": 0,
+      "predicted_benign": 0,
+      "predicted_benign_pct": 0.0,
+      "predicted_correct": 0,
+      "recall_pct": 0.0,
+      "collapsed_to_benign": false,
+      "status": "NO_SAMPLES"
+    },
+    "STAGE_6_EXFILTRATION": {
+      "model": "GRU",
+      "total_test_samples": 799,
+      "predicted_benign": 0,
+      "predicted_benign_pct": 0.0,
+      "predicted_correct": 799,
+      "recall_pct": 100.0,
+      "collapsed_to_benign": false,
+      "status": "ROBUST"
+    }
+  },
+  "temperature": 0.37110835313796997,
+  "gru_ece_before": 0.07782658180246418,
+  "gru_ece_after": 0.08185088438149467
+}

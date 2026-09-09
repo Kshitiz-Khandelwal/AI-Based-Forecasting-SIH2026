@@ -208,7 +208,9 @@ class AttackForecastingEngine:
         self.calibration_loaded = False
         try:
             self.gru_model = TemporalAttackGRU(input_dim=16, hidden_dim=64, num_classes=7).to(self.device)
-            model_path = os.path.join(os.path.dirname(__file__), "models", "temporal_gru_forecaster.pt")
+            model_filename = os.environ.get("TEMPORAL_GRU_MODEL_FILENAME", "temporal_gru_forecaster.pt")
+            model_stem = os.path.splitext(model_filename)[0]
+            model_path = os.environ.get("TEMPORAL_GRU_MODEL_PATH") or os.path.join(os.path.dirname(__file__), "models", model_filename)
             if os.path.exists(model_path):
                 self.gru_model.load_state_dict(torch.load(model_path, map_location=self.device))
                 self.gru_model.eval()
@@ -221,14 +223,16 @@ class AttackForecastingEngine:
             self.gru_model = None
             self.gru_loaded = False
 
-        calibration_path = os.path.join(os.path.dirname(__file__), "models", "temporal_gru_calibration.json")
+        calibration_path = os.path.join(os.path.dirname(__file__), "models", f"{model_stem}_calibration.json")
+        if not os.path.exists(calibration_path):
+            calibration_path = os.path.join(os.path.dirname(__file__), "models", "temporal_gru_calibration.json")
         if os.path.exists(calibration_path):
             try:
                 with open(calibration_path, "r", encoding="utf-8") as calibration_file:
                     calibration = json.load(calibration_file)
                 candidate_temperature = float(calibration.get("temperature", 1.0))
                 calibrated_model = calibration.get("model_file")
-                if calibrated_model not in (None, "temporal_gru_forecaster.pt"):
+                if calibrated_model not in (None, model_filename, "temporal_gru_forecaster.pt"):
                     logger.warning("Ignoring calibration for a different GRU artifact")
                 elif 0.05 <= candidate_temperature <= 10.0:
                     self.temperature = candidate_temperature

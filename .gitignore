@@ -19,6 +19,9 @@ data/audit.log
 services/forecasting_engine/models/temporal_gru_forecaster_grouped_v2.pt
 services/forecasting_engine/models/temporal_gru_forecaster_grouped_v3.pt
 services/forecasting_engine/models/temporal_gru_forecaster_grouped_scaled_v3.pt
+services/forecasting_engine/models/temporal_gru_forecaster_grouped_majority_v3.pt
+services/forecasting_engine/models/temporal_gru_forecaster_grouped_seqlen5_v3.pt
+services/forecasting_engine/models/temporal_gru_forecaster_grouped_seqlen5_majority_v3.pt
 services/forecasting_engine/models/temporal_gru_forecaster_v2.pt
 
 # Training / benchmark run logs (transient, regeneratable)

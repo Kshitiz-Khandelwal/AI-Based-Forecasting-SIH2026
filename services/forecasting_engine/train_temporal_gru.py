@@ -5,7 +5,11 @@ Guarantees (Master Prompt 4 compliant):
   3. Ground-truth label string checked BEFORE port-based heuristic — C2 can't be
      silently overwritten by a port-bucket guess.
   4. Minority-stage oversampling within train split only (never across boundary).
-  5. Weighted CrossEntropyLoss for class imbalance.
+  5. Focal loss (gamma=2.0) with inverse-frequency alpha for class imbalance.
+  6. Jitter-augmented oversampling: 5% per-feature Gaussian noise prevents verbatim memorisation.
+  7. label_strategy: 'next' (default), 'majority' (mode within window), or 'center' (mid-flow).
+  8. seq_len and label_strategy are runtime-configurable via env vars TEMPORAL_GRU_SEQ_LEN /
+     TEMPORAL_GRU_LABEL_STRATEGY without code changes.
 """
 import os
 import sys
@@ -120,15 +124,28 @@ def chronological_split_per_scenario(df, ratios=(0.70, 0.15, 0.15)):
 
 
 class TemporalSequenceDataset(Dataset):
-    def __init__(self, features, labels, group_ids=None, seq_len=10, oversample=False):
+    def __init__(self, features, labels, group_ids=None, seq_len=10, oversample=False,
+                 label_strategy: str = "next"):
         """Create windows strictly within an ordered scenario/source-host group.
 
         A window cannot cross a scenario or host boundary.  This avoids creating
         artificial attack histories from unrelated CTU-13 flows after partitions
         have been concatenated.
+
+        Args:
+            label_strategy: Controls what label is assigned to each window.
+                'next'     — label of the flow AFTER the window (default; next-step prediction).
+                'majority' — mode of labels WITHIN the window (majority vote).
+                'center'   — label of the CENTER flow of the window (index seq_len // 2).
+                'majority' and 'center' are diagnostic alternatives for the window-dilution
+                hypothesis: if Recon/C2 bursts are shorter than seq_len, 'next' causes the
+                window label to often be Benign (the burst ended before the window finished).
         """
+        from scipy import stats as scipy_stats
         features = np.asarray(features, dtype=np.float32)
         labels = np.asarray(labels, dtype=np.int64)
+        if label_strategy not in ("next", "majority", "center"):
+            raise ValueError(f"label_strategy must be 'next', 'majority', or 'center'; got {label_strategy!r}")
         if group_ids is None:
             group_ids = np.zeros(len(features), dtype=np.int64)
         if len(group_ids) != len(features):
@@ -141,7 +158,15 @@ class TemporalSequenceDataset(Dataset):
                 window_indices = group_indices[start:start + seq_len]
                 target_index = group_indices[start + seq_len]
                 X_seqs.append(features[window_indices])
-                y_seqs.append(labels[target_index])
+                if label_strategy == "next":
+                    y_seqs.append(labels[target_index])
+                elif label_strategy == "majority":
+                    window_labels = labels[window_indices]
+                    majority = int(scipy_stats.mode(window_labels, keepdims=True).mode[0])
+                    y_seqs.append(majority)
+                elif label_strategy == "center":
+                    center_index = window_indices[seq_len // 2]
+                    y_seqs.append(labels[center_index])
 
         if not X_seqs:
             raise ValueError("No complete sequences: each scenario/source-host group needs more than seq_len flows")
@@ -282,13 +307,32 @@ def main():
         stage5_test_sample = test_df.iloc[:len(y_test)][stage5_test_mask[:len(test_df)]]['Label'].value_counts().head(10)
         print(f"\n  [VERIFY] Stage 5 Label composition in TEST:\n{stage5_test_sample}")
 
-    seq_len = 10
-    # Master Prompt 4: oversample minority stages in TRAIN only
-    train_ds = TemporalSequenceDataset(X_train, y_train, train_groups, seq_len, oversample=True)
-    val_ds = TemporalSequenceDataset(X_val, y_val, val_groups, seq_len, oversample=False)
-    test_ds = TemporalSequenceDataset(X_test, y_test, test_groups, seq_len, oversample=False)
+    # seq_len and label_strategy are runtime-configurable for ablation experiments.
+    # Set TEMPORAL_GRU_SEQ_LEN=5 to test the burst-length hypothesis (Task 3).
+    # Set TEMPORAL_GRU_LABEL_STRATEGY=majority for majority-vote window labeling (Task 2).
+    seq_len = int(os.environ.get("TEMPORAL_GRU_SEQ_LEN", "10"))
+    label_strategy = os.environ.get("TEMPORAL_GRU_LABEL_STRATEGY", "next")
+    if label_strategy not in ("next", "majority", "center"):
+        raise ValueError(f"TEMPORAL_GRU_LABEL_STRATEGY must be next/majority/center; got {label_strategy!r}")
+
+    model_dir = os.path.join("services", "forecasting_engine", "models")
+    os.makedirs(model_dir, exist_ok=True)
+    model_filename = os.environ.get("TEMPORAL_GRU_MODEL_FILENAME", "temporal_gru_forecaster.pt")
+    model_path = os.path.join(model_dir, model_filename)
+    artifact_stem = os.path.splitext(model_filename)[0]
+
+    print(f"\n[CONFIG] seq_len={seq_len} | label_strategy={label_strategy!r} | model={model_filename}")
+
+    # Oversample minority stages in TRAIN only; never across scenario/host boundary.
+    train_ds = TemporalSequenceDataset(X_train, y_train, train_groups, seq_len,
+                                       oversample=True, label_strategy=label_strategy)
+    val_ds = TemporalSequenceDataset(X_val, y_val, val_groups, seq_len,
+                                     oversample=False, label_strategy=label_strategy)
+    test_ds = TemporalSequenceDataset(X_test, y_test, test_groups, seq_len,
+                                      oversample=False, label_strategy=label_strategy)
 
     print(f"\n[+] Oversampled Train Sequences: {len(train_ds)} (scenario/source-host isolated)")
+
 
     # Master Prompt 4: DataLoader generator pinned for shuffle determinism
     _gen = torch.Generator()
@@ -300,48 +344,41 @@ def main():
     device = torch.device("cpu")
     model = TemporalAttackGRU().to(device)
 
-    # Focal loss: down-weights easy well-classified benign examples to keep
-    # gradients alive for hard minority RECON / C2 sequences throughout training.
-    # gamma=2.0 is the standard focal loss exponent (Lin et al. 2017).
-    # alpha=inverse-frequency on raw pre-oversampling counts (uncontaminated by duplication).
-    class_counts = np.array([train_counts.get(i, 1) for i in range(7)], dtype=np.float32)
-    class_weights = torch.tensor(1.0 / (class_counts + 1e-6), dtype=torch.float32)
-    class_weights = class_weights / class_weights.sum() * 7  # normalize to ~1 mean weight
+    # Focal loss (Lin et al. 2017):
+    # Modulating factor (1 - p_t)^gamma down-weights well-classified easy examples (BENIGN)
+    # and prevents them from overwhelming gradients, keeping focus on hard minority attacks.
+    # p_t is computed from unweighted cross-entropy: p_t = exp(-unweighted_ce).
+    # Moderate alpha scaling (square root inverse frequency of training sequences) provides
+    # gentle class balancing without distorting p_t.
+    seq_counts = np.array([max(1, int((train_ds.y_seq.numpy() == i).sum())) for i in range(7)], dtype=np.float32)
+    inv_freq = 1.0 / np.sqrt(seq_counts)
+    class_weights = torch.tensor(inv_freq / inv_freq.mean(), dtype=torch.float32)
 
-    FOCAL_GAMMA = 2.0  # standard focal exponent — penalises easy examples quadratically
+    FOCAL_GAMMA = 2.0  # standard focal exponent
 
     class FocalLoss(nn.Module):
-        """Cross-entropy with a (1-p_t)^gamma modulating factor (focal loss).
-
-        This multiplicatively suppresses the loss contribution from examples the
-        model already classifies with high confidence (mostly BENIGN), forcing
-        sustained gradient updates on hard minority sequences (RECON, C2).
-        Class-frequency alpha weights are applied before focal modulation.
-        """
-        def __init__(self, alpha: torch.Tensor, gamma: float = 2.0):
+        """Focal loss with unweighted p_t calculation and outer alpha weighting."""
+        def __init__(self, alpha: torch.Tensor = None, gamma: float = 2.0):
             super().__init__()
             self.alpha = alpha
             self.gamma = gamma
-            self.ce = nn.CrossEntropyLoss(reduction='none', weight=self.alpha)
+            self.ce = nn.CrossEntropyLoss(reduction='none')
 
         def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-            ce_loss = self.ce(logits, targets)          # per-sample weighted CE
-            p_t = torch.exp(-ce_loss)                  # p_t = model confidence on true class
-            focal_loss = ((1.0 - p_t) ** self.gamma) * ce_loss
+            unweighted_ce = self.ce(logits, targets)
+            p_t = torch.exp(-unweighted_ce).clamp(min=1e-6, max=1.0)
+            focal_loss = ((1.0 - p_t) ** self.gamma) * unweighted_ce
+            if self.alpha is not None:
+                focal_loss = self.alpha[targets] * focal_loss
             return focal_loss.mean()
 
     criterion = FocalLoss(alpha=class_weights, gamma=FOCAL_GAMMA)
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.003, weight_decay=1e-4)
 
-    print(f"\n[*] Training GRU (Epochs=10, Batch=256, SeqLen=10, SEED={SEED})...")
+    print(f"\n[*] Training GRU (Epochs=10, Batch=256, SeqLen={seq_len}, Strategy={label_strategy!r}, SEED={SEED})...")
     print(f"{'Epoch':<8} | {'Train Loss':<12} | {'Val Loss':<12} | {'Val Acc':<10} | {'Time':<8}")
     print("-" * 60)
     best_val_loss = float("inf")
-    model_dir = os.path.join("services", "forecasting_engine", "models")
-    os.makedirs(model_dir, exist_ok=True)
-    model_filename = os.environ.get("TEMPORAL_GRU_MODEL_FILENAME", "temporal_gru_forecaster.pt")
-    model_path = os.path.join(model_dir, model_filename)
-    artifact_stem = os.path.splitext(model_filename)[0]
     if scaler is not None:
         scaler_path = os.path.join(model_dir, f"{artifact_stem}_scaler.json")
         with open(scaler_path, "w", encoding="utf-8") as scaler_file:

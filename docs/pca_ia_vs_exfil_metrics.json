@@ -1,0 +1,10 @@
+{
+  "between_class_distance_sq": 12.394549369812012,
+  "within_class_variance_avg": 6.652490615844727,
+  "separability_ratio": 1.8631441593170166,
+  "pc1_variance_explained": 0.48956239223480225,
+  "pc2_variance_explained": 0.20140549540519714,
+  "n_initial_access": 4393,
+  "n_exfiltration": 2450,
+  "interpretation": "MODERATE OVERLAP \u2014 model may improve with better training"
+}

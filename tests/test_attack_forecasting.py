@@ -242,6 +242,34 @@ class TestAttackForecasting(unittest.TestCase):
         self.assertLess(ratio_easy, ratio_hard,
                         "Focal loss must reduce easy-example loss proportionally more than hard-example loss")
 
+    def test_temporal_sequence_dataset_label_strategies(self):
+        """TemporalSequenceDataset must produce correct labels under 'next', 'majority', and 'center'."""
+        try:
+            from services.forecasting_engine.train_temporal_gru import TemporalSequenceDataset
+        except ImportError:
+            from train_temporal_gru import TemporalSequenceDataset
+
+        # 12 flows: 4 Benign (0), 3 Recon (1), 5 Benign (0)
+        feats = np.zeros((12, 16), dtype=np.float32)
+        labels = np.array([0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0], dtype=np.int64)
+        groups = np.array(["group1"] * 12)
+
+        ds_next = TemporalSequenceDataset(feats, labels, groups, seq_len=5, label_strategy="next")
+        ds_maj = TemporalSequenceDataset(feats, labels, groups, seq_len=5, label_strategy="majority")
+        ds_center = TemporalSequenceDataset(feats, labels, groups, seq_len=5, label_strategy="center")
+
+        self.assertEqual(len(ds_next), 7)
+        self.assertEqual(len(ds_maj), 7)
+        self.assertEqual(len(ds_center), 7)
+
+        # Window starting at idx 3: slice is labels[3:8] = [0, 1, 1, 1, 0]
+        # target for 'next' is index 8 (labels[8] = 0)
+        # majority of [0, 1, 1, 1, 0] is 1
+        # center of [0, 1, 1, 1, 0] is index 3 + 2 = 5 (labels[5] = 1)
+        self.assertEqual(int(ds_next.y_seq[3]), 0)
+        self.assertEqual(int(ds_maj.y_seq[3]), 1)
+        self.assertEqual(int(ds_center.y_seq[3]), 1)
+
 
 
 if __name__ == "__main__":
