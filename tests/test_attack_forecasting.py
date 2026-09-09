@@ -270,7 +270,67 @@ class TestAttackForecasting(unittest.TestCase):
         self.assertEqual(int(ds_maj.y_seq[3]), 1)
         self.assertEqual(int(ds_center.y_seq[3]), 1)
 
+    def test_no_burst_leakage_across_train_test(self):
+        """Permanent leakage guard: no contiguous attack burst may be cleaved across train/val/test splits."""
+        import pandas as pd
+        from services.forecasting_engine.train_temporal_gru import label_flow, chronological_split_per_scenario
+
+        data_path = os.path.join(os.path.dirname(__file__), "..", "data", "ctu13_multistage_flows.csv")
+        if not os.path.exists(data_path):
+            self.skipTest(f"Dataset not found at {data_path}")
+
+        df = pd.read_csv(data_path, low_memory=False)
+        df['StartTime'] = pd.to_datetime(df['StartTime'])
+        df['stage'] = [label_flow(r) for _, r in df.iterrows()]
+
+        train_df, val_df, test_df = chronological_split_per_scenario(df)
+
+        def make_row_id(row):
+            return f"{row['Scenario']}::{row['StartTime']}::{row['SrcAddr']}::{row['Dport']}::{row['TotPkts']}"
+
+        train_set = set(train_df.apply(make_row_id, axis=1))
+        val_set = set(val_df.apply(make_row_id, axis=1))
+        test_set = set(test_df.apply(make_row_id, axis=1))
+
+        bisected_attack_bursts = []
+        for sc, grp in df.groupby("Scenario"):
+            grp = grp.sort_values("StartTime").reset_index(drop=True)
+            stages = grp['stage'].to_numpy()
+            n = len(grp)
+            row_ids = [make_row_id(r) for _, r in grp.iterrows()]
+
+            i = 0
+            while i < n:
+                if stages[i] > 0:
+                    curr_stage = stages[i]
+                    j = i
+                    while j < n and stages[j] == curr_stage:
+                        j += 1
+                    burst_row_ids = row_ids[i:j]
+                    in_train = any(rid in train_set for rid in burst_row_ids)
+                    in_val = any(rid in val_set for rid in burst_row_ids)
+                    in_test = any(rid in test_set for rid in burst_row_ids)
+
+                    partitions_touched = sum([in_train, in_val, in_test])
+                    if partitions_touched > 1:
+                        bisected_attack_bursts.append({
+                            "scenario": sc,
+                            "stage": curr_stage,
+                            "rows": f"{i}..{j}",
+                            "in_train": in_train,
+                            "in_val": in_val,
+                            "in_test": in_test
+                        })
+                    i = j
+                else:
+                    i += 1
+
+        self.assertEqual(
+            len(bisected_attack_bursts), 0,
+            f"Found {len(bisected_attack_bursts)} bisected attack bursts across partitions (DATA LEAKAGE BUG): {bisected_attack_bursts[:3]}"
+        )
 
 
 if __name__ == "__main__":
     unittest.main()
+

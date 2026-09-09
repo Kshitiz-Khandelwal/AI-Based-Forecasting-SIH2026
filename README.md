@@ -181,51 +181,56 @@ Black-box predictions are unacceptable in Critical Information Infrastructure. T
 
 ## 📊 Empirical Benchmark: World Model vs. Baseline
 
-Side-by-side evaluation of **Logistic Regression baseline** vs **Temporal GRU (v4, `seq_len=5`, majority-vote, stream-stratified chronological split)** on the strict held-out CTU-13 partition. Both models use the same **scenario + source-host-grouped sequences** with zero future-to-past temporal leakage.
+Side-by-side evaluation of **Logistic Regression baseline** vs **Temporal GRU (v5, `seq_len=5`, majority-vote, leak-free burst-snapped timeline split)** on the strict held-out CTU-13 partition. Both models use the same **scenario + source-host-grouped sequences** with zero temporal leakage and zero burst bisection.
 
-> Source: `services/forecasting_engine/models/temporal_gru_forecaster_grouped_v4_benchmark_results.json`
+> **Model Lineage & Leakage Audit Notice**:
+> - **v2 (`grouped_v2`)**: Honest baseline (Weighted F1 66.61%, Recon 0%, C2 0%, Initial Access 42.76%, Exfil 46.74%).
+> - **v4 (`grouped_v4`)**: ⚠️ **INVALIDATED — Split-Induced Leakage Bug**. The 99.95% overall F1 was an artifact of independent per-stream splitting that cleaved contiguous bursts across train/test (98.7% identical test sequences). See full forensic proof in [`docs/LEAKAGE_DIAGNOSTIC_REPORT.md`](docs/LEAKAGE_DIAGNOSTIC_REPORT.md).
+> - **v5 (`grouped_v5`)**: **CORRECTED & CERTIFIED LEAK-FREE**. Reverted to scenario-level unified timeline with contiguous burst snapping (0 bursts cleaved).
 
-| Metric | Logistic Regression (Baseline) | Temporal GRU v4 (`grouped_v4`) | Advantage / Winner |
+> Source: `services/forecasting_engine/models/temporal_gru_forecaster_grouped_v5_benchmark_results.json`
+
+| Metric | Logistic Regression (Baseline) | Temporal GRU v5 (`grouped_v5`) | Advantage / Winner |
 | :--- | :---: | :---: | :--- |
-| **Weighted F1** | 97.61% | **99.95%** | **Temporal GRU (+2.34pp)** |
-| **Weighted Recall** | 97.05% | **99.95%** | **Temporal GRU (+2.90pp)** |
-| **Weighted Precision** | 98.64% | **99.95%** | **Temporal GRU (+1.31pp)** |
-| **Benign False Positive Rate (FPR)** | 3.4197% (231 false alarms) | **0.0444% (3 false alarms)** | **Temporal GRU (77x lower FPR)** |
-| **Per-Sequence Inference Latency** | **0.0002 ms** | 0.0122 ms | Both sub-millisecond real-time |
-| **RECONNAISSANCE F1** | 56.83% | **98.09%** | **Temporal GRU (+41.26pp)** |
-| **C2 PERSISTENCE F1** | 42.28% | **100.00%** | **Temporal GRU (+57.72pp)** |
-| **INITIAL ACCESS F1** | 97.32% | **99.93%** | **Temporal GRU (+2.61pp)** |
-| **EXFILTRATION F1** | 99.24% | **99.81%** | **Temporal GRU (+0.57pp)** |
-| **BENIGN F1** | 98.26% | **99.98%** | **Temporal GRU (+1.72pp)** |
+| **Weighted F1** | 85.18% | **88.33%** | **Temporal GRU (+3.15pp)** |
+| **Weighted Recall** | 88.17% | **91.79%** | **Temporal GRU (+3.62pp)** |
+| **Weighted Precision** | **85.74%** | 85.37% | Comparable |
+| **Benign False Positive Rate (FPR)** | 7.3351% (357 false alarms) | **0.0000% (0 false alarms)** | **Temporal GRU (Zero False Alarms)** |
+| **Per-Sequence Inference Latency** | **0.0001 ms** | 0.0056 ms | Both sub-millisecond real-time |
+| **INITIAL ACCESS F1** | 98.35% | **98.64%** | **Temporal GRU (+0.29pp)** |
+| **EXFILTRATION F1** | 99.75% | **99.94%** | **Temporal GRU (+0.19pp)** |
+| **BENIGN F1** | 92.51% | **93.14%** | **Temporal GRU (+0.63pp)** |
+| **RECONNAISSANCE F1** | 9.92% (Recall 5.2%) | 0.00% (Recall 0.0%) | Short-burst collapse documented |
+| **C2 PERSISTENCE F1** | 0.00% (Recall 0.0%) | 0.00% (Recall 0.0%) | Short-burst collapse documented |
 
-### Resolving the Flow-Density Artifact & Majority-Class Collapse
+### Zero-Leakage Burst-Snapped Splitting
 
-Prior models suffered from Recon and C2 collapse to Benign because of a subtle dataset sampling artifact:
-1. **Flow-Rate Density Asymmetry**: When CTU-13 raw PCAP binetflows were sampled, 15,000 benign flows occurred within the first 90–120 seconds of capture on high-speed links, while attack campaigns (Murlo port scans, custom encrypted C2) unfolded over hours.
-2. **Row-Count Cutting Defect**: Cutting strictly by row count ($N_{\text{rows}} \times 0.70$) placed only the first 90 seconds in the training set, pushing 99.7% of Recon and 100% of C2 into the test partition. The model was tested on attacks it was never shown.
-3. **Stream-Stratified Chronological Solution**: By independently partitioning benign and attack streams chronologically within each scenario (Earliest 70% $\to$ Train, Middle 15% $\to$ Val, Latest 15% $\to$ Test), temporal causality is 100% preserved ($T_{\text{train}} < T_{\text{val}} < T_{\text{test}}$) while ensuring every kill-chain stage has early temporal representation in training and future sequence evaluation in testing.
+To prevent data leakage while preserving temporal integrity:
+1. **Unified Scenario Timeline**: No independent per-stream splitting of benign vs attack flows.
+2. **Burst Boundary Snapping**: Nominal 70/15/15 chronological cuts are snapped to the nearest contiguous attack burst boundary (`stage > 0`), guaranteeing zero contiguous bursts are cleaved across partitions (100% burst integrity).
+3. **Automated Unit Test Guard**: Permanently enforced by `tests.test_attack_forecasting.TestAttackForecasting.test_no_burst_leakage_across_train_test`.
 
-### Per-Class Held-Out Breakdown (`grouped_v4`)
+### Per-Class Held-Out Breakdown (`grouped_v5`)
 
 | Stage | Support (Test) | Precision | Recall | F1-Score | Majority Collapse Diagnostic |
 | :--- | ---: | :---: | :---: | :---: | :--- |
-| **STAGE_0_BENIGN** | 6,755 | **100.00%** | 99.96% | **99.98%** | ✅ Flawless benign identification (0.04% FPR) |
-| **STAGE_1_RECONNAISSANCE** | 77 | 96.25% | **100.00%** | **98.09%** | ✅ **0.0% collapsed to Benign** (100% recall) |
-| **STAGE_2_INITIAL_ACCESS** | 707 | **100.00%** | 99.86% | **99.93%** | ✅ **0.0% collapsed to Benign** (zero Exfil confusion) |
+| **STAGE_0_BENIGN** | 4,867 | 87.16% | **100.00%** | **93.14%** | ✅ Flawless benign identification (0.0000% FPR) |
+| **STAGE_1_RECONNAISSANCE** | 345 | 0.00% | 0.00% | 0.00% | ⚠️ Collapsed to Benign (short-burst dilution) |
+| **STAGE_2_INITIAL_ACCESS** | 2,424 | **100.00%** | 97.32% | **98.64%** | ✅ High precision & recall on deep multi-flow sequences |
 | **STAGE_3_DISCOVERY** | 0 | — | — | — | ❌ Zero CTU-13 holdout samples — dataset gap |
-| **STAGE_4_C2_PERSISTENCE** | 26 | **100.00%** | **100.00%** | **100.00%** | ✅ **0.0% collapsed to Benign** (100% precision & recall) |
+| **STAGE_4_C2_PERSISTENCE** | 308 | 0.00% | 0.00% | 0.00% | ⚠️ Collapsed to Benign (short-burst dilution) |
 | **STAGE_5_LATERAL_MOVEMENT** | 0 | — | — | — | ❌ Low sample support in CTU-13 (2 train flows) |
-| **STAGE_6_EXFILTRATION** | 261 | 99.62% | **100.00%** | **99.81%** | ✅ **0.0% collapsed to Benign** (100% recall) |
+| **STAGE_6_EXFILTRATION** | 799 | 99.88% | **100.00%** | **99.94%** | ✅ Near-perfect sequence detection (100% recall) |
 
 **Reproducing the Benchmark & Training**:
 ```powershell
-# Run deterministic benchmark for v4 model
-$env:TEMPORAL_GRU_MODEL_FILENAME = 'temporal_gru_forecaster_grouped_v4.pt'
+# Run deterministic benchmark for leak-free v5 model
+$env:TEMPORAL_GRU_MODEL_FILENAME = 'temporal_gru_forecaster_grouped_v5.pt'
 $env:TEMPORAL_GRU_SEQ_LEN = '5'
 $env:TEMPORAL_GRU_LABEL_STRATEGY = 'majority'
 python services/forecasting_engine/run_full_ml_benchmark.py
 
-# Run all regression unit tests
+# Run all regression unit tests (including leakage guard)
 python -m unittest tests.test_attack_forecasting -v
 ```
 

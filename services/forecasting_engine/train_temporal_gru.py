@@ -104,38 +104,65 @@ def label_flow(row):
 
 
 def chronological_split_per_scenario(df, ratios=(0.70, 0.15, 0.15)):
-    """Split within each CTU-13 scenario chronologically, preserving temporal causality.
+    """Split within each CTU-13 scenario chronologically on the whole timeline, with burst boundary snapping.
 
-    Benign background traffic and attack streams are partitioned chronologically:
-    - Earliest 70% of chronological timeline -> Train
-    - Intermediate 15% of chronological timeline -> Val
-    - Future 15% of chronological timeline -> Test
-    This prevents flow-rate density artifacts where high-throughput early background
-    floods push all attack episodes into the test set, while guaranteeing zero future-to-past
-    leakage (StartTime_train < StartTime_val < StartTime_test within each scenario).
+    NO independent per-stream splitting of benign vs attack flows (which bisected contiguous
+    attack bursts and caused train-to-test leakage in commit b2e6896).
+    Instead, cuts are computed on the whole chronological scenario timeline and snapped to the
+    nearest contiguous attack burst boundary. This guarantees no single burst is ever split across
+    train, val, or test partitions, while strictly preserving temporal causality (StartTime_train <
+    StartTime_val < StartTime_test within each scenario).
     """
     parts = {"train": [], "val": [], "test": []}
     for scenario_id, group in df.groupby("Scenario"):
         group = group.copy()
         if "stage" not in group.columns:
             group["stage"] = [label_flow(row) for _, row in group.iterrows()]
-        s_benign = group[group["stage"] == 0].sort_values("StartTime").reset_index(drop=True)
-        s_attack = group[group["stage"] > 0].sort_values("StartTime").reset_index(drop=True)
+        group = group.sort_values("StartTime").reset_index(drop=True)
+        n = len(group)
+        if n == 0:
+            continue
+        stages = group["stage"].to_numpy()
 
-        for sub in [s_benign, s_attack]:
-            n = len(sub)
-            if n == 0:
-                continue
-            t_end = int(n * ratios[0])
-            v_end = int(n * (ratios[0] + ratios[1]))
-            parts["train"].append(sub.iloc[:t_end])
-            parts["val"].append(sub.iloc[t_end:v_end])
-            parts["test"].append(sub.iloc[v_end:])
+        # Identify all contiguous attack bursts (stage > 0)
+        bursts = []
+        i = 0
+        while i < n:
+            if stages[i] > 0:
+                stg = stages[i]
+                b_start = i
+                while i < n and stages[i] == stg:
+                    i += 1
+                bursts.append((b_start, i, stg))
+            else:
+                i += 1
+
+        raw_cut1 = int(n * ratios[0])
+        raw_cut2 = int(n * (ratios[0] + ratios[1]))
+
+        # Snap cut1 to nearest outer burst boundary if it falls inside an attack burst
+        cut1 = raw_cut1
+        for b_start, b_end, stg in bursts:
+            if b_start < cut1 < b_end:
+                cut1 = b_start if (cut1 - b_start) <= (b_end - cut1) else b_end
+                break
+
+        # Snap cut2 to nearest outer burst boundary (ensuring cut2 >= cut1)
+        cut2 = max(raw_cut2, cut1)
+        for b_start, b_end, stg in bursts:
+            if b_start < cut2 < b_end:
+                cut2 = max(b_start, cut1) if (cut2 - b_start) <= (b_end - cut2) else b_end
+                break
+
+        parts["train"].append(group.iloc[:cut1])
+        parts["val"].append(group.iloc[cut1:cut2])
+        parts["test"].append(group.iloc[cut2:])
 
     train = pd.concat(parts["train"]).sort_values("StartTime").reset_index(drop=True)
     val = pd.concat(parts["val"]).sort_values("StartTime").reset_index(drop=True)
     test = pd.concat(parts["test"]).sort_values("StartTime").reset_index(drop=True)
     return train, val, test
+
 
 
 class TemporalSequenceDataset(Dataset):

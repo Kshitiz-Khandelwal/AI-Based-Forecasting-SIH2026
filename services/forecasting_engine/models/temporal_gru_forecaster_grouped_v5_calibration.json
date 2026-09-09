@@ -1,0 +1,7 @@
+{
+  "model_file": "temporal_gru_forecaster_grouped_v5.pt",
+  "temperature": 0.37110835313796997,
+  "fit_split": "validation",
+  "ece_before": 0.016148375221004943,
+  "ece_after": 0.0006294989527765854
+}

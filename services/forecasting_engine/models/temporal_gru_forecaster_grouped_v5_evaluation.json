@@ -1,38 +1,36 @@
 {
-  "status": "invalidated_leakage_bug",
-  "invalidation_reason": "Split-induced data leakage from independent per-stream cut bisecting contiguous attack bursts (b2e6896). See docs/LEAKAGE_DIAGNOSTIC_REPORT.md",
   "dataset": "data\\ctu13_multistage_flows.csv",
   "split": "chronological_per_scenario_70_15_15",
   "sequence_grouping": "Scenario + SrcAddr",
   "standardization": "disabled",
-  "temperature": 0.4091385006904602,
+  "temperature": 0.37110835313796997,
   "evaluation": {
     "weighted": {
-      "precision": 0.9995037460763982,
-      "recall": 0.9994888832098134,
-      "f1": 0.9994925800441735
+      "precision": 0.8537190780049337,
+      "recall": 0.9178771588699531,
+      "f1": 0.8832956480026135
     },
-    "benign_fpr": 0.00044411547002220575,
+    "benign_fpr": 0.0,
     "per_class": {
       "STAGE_0_BENIGN": {
-        "precision": 1.0,
-        "recall": 0.9995558845299778,
-        "f1": 0.9997778929443992,
-        "support": 6755,
+        "precision": 0.8715974212034384,
+        "recall": 1.0,
+        "f1": 0.9313941249641182,
+        "support": 4867,
         "reliability": "sufficient-support"
       },
       "STAGE_1_RECONNAISSANCE": {
-        "precision": 0.9625,
-        "recall": 1.0,
-        "f1": 0.9808917197452229,
-        "support": 77,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 345,
         "reliability": "sufficient-support"
       },
       "STAGE_2_INITIAL_ACCESS": {
         "precision": 1.0,
-        "recall": 0.9985855728429985,
-        "f1": 0.9992922859164898,
-        "support": 707,
+        "recall": 0.9731848184818482,
+        "f1": 0.986410202801589,
+        "support": 2424,
         "reliability": "sufficient-support"
       },
       "STAGE_3_DISCOVERY": {
@@ -43,10 +41,10 @@
         "reliability": "low-sample \u2014 metric not statistically reliable"
       },
       "STAGE_4_C2_PERSISTENCE": {
-        "precision": 1.0,
-        "recall": 1.0,
-        "f1": 1.0,
-        "support": 26,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 308,
         "reliability": "sufficient-support"
       },
       "STAGE_5_LATERAL_MOVEMENT": {
@@ -57,10 +55,10 @@
         "reliability": "low-sample \u2014 metric not statistically reliable"
       },
       "STAGE_6_EXFILTRATION": {
-        "precision": 0.9961832061068703,
+        "precision": 0.99875,
         "recall": 1.0,
-        "f1": 0.9980879541108987,
-        "support": 261,
+        "f1": 0.9993746091307066,
+        "support": 799,
         "reliability": "sufficient-support"
       }
     }
